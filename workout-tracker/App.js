@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -177,6 +178,12 @@ function ExerciseImage({ exerciseName }) {
     );
   }
   const clean = cleanExerciseName(exerciseName);
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const info = Image.resolveAssetSource(source);
+  const aspectRatio = info && info.width && info.height ? info.width / info.height : 4 / 3;
+  const cardWidth = screenWidth - 40;
+  const maxImgHeight = screenHeight * 0.65;
+  const imgHeight = Math.min(cardWidth / aspectRatio, maxImgHeight);
   return (
     <>
       <TouchableOpacity onPress={() => setEnlarged(true)}>
@@ -185,7 +192,7 @@ function ExerciseImage({ exerciseName }) {
       <Modal visible={enlarged} transparent animationType="fade">
         <TouchableOpacity style={styles.imgModalOverlay} onPress={() => setEnlarged(false)} activeOpacity={1}>
           <View style={styles.imgModalCard}>
-            <Image source={source} style={styles.imgModalFull} resizeMode="stretch" />
+            <Image source={source} style={[styles.imgModalFull, { height: imgHeight }]} resizeMode="contain" />
             <View style={styles.imgModalTextBox}>
               <Text style={styles.imgModalTitle}>{clean}</Text>
               {EXERCISE_NOTES[clean] && (
@@ -979,8 +986,8 @@ const styles = StyleSheet.create({
   logWeight: { color: COLORS.text, fontWeight: 'bold', fontSize: 14 },
   sectionLabel: { color: COLORS.text, fontWeight: 'bold', fontSize: 15, marginBottom: 8 },
   imgModalOverlay: { flex: 1, backgroundColor: '#000000ee', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  imgModalCard: { width: '100%', borderRadius: 12, overflow: 'hidden' },
-  imgModalFull: { width: '100%', height: 250 },
+  imgModalCard: { width: '100%', borderRadius: 12 },
+  imgModalFull: { width: '100%' },
   imgModalTextBox: { backgroundColor: '#ffffff', padding: 12 },
   imgModalTitle: { color: '#000000', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   imgModalNotes: { color: '#333333', fontSize: 13, lineHeight: 19 },

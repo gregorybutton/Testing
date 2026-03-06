@@ -986,9 +986,9 @@ const styles = StyleSheet.create({
   logWeight: { color: COLORS.text, fontWeight: 'bold', fontSize: 14 },
   sectionLabel: { color: COLORS.text, fontWeight: 'bold', fontSize: 15, marginBottom: 8 },
   imgModalOverlay: { flex: 1, backgroundColor: '#000000ee', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  imgModalCard: { width: '100%', borderRadius: 12 },
-  imgModalFull: { width: '100%' },
-  imgModalTextBox: { backgroundColor: '#ffffff', padding: 12 },
+  imgModalCard: { width: '100%' },
+  imgModalFull: { width: '100%', borderTopLeftRadius: 12, borderTopRightRadius: 12, overflow: 'hidden' },
+  imgModalTextBox: { backgroundColor: '#ffffff', padding: 12, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, overflow: 'hidden' },
   imgModalTitle: { color: '#000000', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   imgModalNotes: { color: '#333333', fontSize: 13, lineHeight: 19 },
 });

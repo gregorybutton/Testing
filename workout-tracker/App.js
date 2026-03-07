@@ -31,10 +31,10 @@ function buildPlan(days) { return days; }
 const WORKOUT_PLANS = {
   'Build Muscle': buildPlan([
     { day: 'Sunday – Rest', exercises: ['Full Body Stretching 15min', 'Foam Roll', 'Deep Breathing 5min'] },
-    { day: 'Monday – Upper Body', exercises: ['Incline Bench', 'Seated Cable Fly', 'Weighted Pull Ups', 'Cable Side Lateral Raise', 'Deficit Pendlay Row'] },
+    { day: 'Monday – Upper Body', exercises: ['Incline Bench', 'Seated Cable Fly', 'Weighted Pull Ups', 'Cable Lateral Raise 3×10', 'Deficit Pendlay Row'] },
     { day: 'Tuesday – Lower Body', exercises: ['Lying Leg Curl 2×8', 'Back Squat 3×6', 'Romanian Deadlift 3×6', 'Leg Extension 2×10', 'Hip Abduction 2×10', 'Standing Calf Raise 3×10'] },
     { day: 'Wednesday – Rest', exercises: ['Full Body Stretching 15min', 'Foam Roll', 'Deep Breathing 5min'] },
-    { day: 'Thursday – Push Day', exercises: ['Bench Press 4×8', 'Incline DB Press 3×10', 'OHP 4×8', 'Lateral Raises 3×15', 'Tricep Dips 3×12', 'Cable Flys 3×12'] },
+    { day: 'Thursday – Push Day', exercises: ['Bench Press 3×8', 'Machine Shoulder Press 3×10', 'Pec Deck 3×15', 'Cable Lateral Raise 3×10', 'Overhead Extension 3×8', 'Cable Kickback 3×10'] },
     { day: 'Friday – Pull Day', exercises: ['Deadlift 4×5', 'Pull-Ups 4×8', 'Cable Rows 4×10', 'Face Pulls 3×15', 'EZ Bar Curls 4×10', 'Hammer Curls 3×12'] },
     { day: 'Saturday – Leg Day', exercises: ['Back Squat 5×5', 'Front Squat 3×6', 'Leg Press 4×10', 'Nordic Curls 3×6', 'Leg Curls 3×12', 'Calf Raises 5×20'] },
   ]),
@@ -90,6 +90,11 @@ const EXERCISE_NOTES = {
   'Cable Side Lateral Raise': 'Slight forward lean. Lead with your elbow, not your wrist. Pause briefly at shoulder height before controlled lowering.',
   'Deficit Pendlay Row':    'Bar starts on the floor each rep. Flat back, horizontal torso. Explosively row to lower chest, focusing on upper back contraction.',
   'Bench Press':            'Arch naturally, feet flat. Bar path slightly diagonal — touch lower chest, press back toward the rack.',
+  'Machine Shoulder Press': 'Adjust seat so handles are at shoulder height. Press straight up without shrugging. Lower with control — don\'t let the weight stack drop.',
+  'Pec Deck':               'Keep elbows slightly bent and at shoulder height. Lead with your elbows to maximize chest engagement. Squeeze hard at the peak, return slowly for a full stretch.',
+  'Cable Lateral Raise':    'Slight forward lean. Lead with your elbow, not your wrist. Raise to shoulder height and lower with control — don\'t let the cable pull you back.',
+  'Overhead Extension':     'Keep elbows close together and pointed forward. Lower until you feel a full tricep stretch, then extend fully. Avoid flaring the elbows on the press.',
+  'Cable Kickback':         'Hinge forward at the hips, upper arm parallel to the floor. Extend fully at the elbow and squeeze the tricep. Keep upper arm stationary throughout.',
   'Overhead Press':         'Brace core and glutes. Bar travels in a straight line — move your head back as bar passes, then forward again.',
   'Pull-Ups':               'Full dead hang at the bottom. Drive elbows down toward your pockets. Chin clears the bar at the top.',
   'Bicep Curls':            'Keep elbows pinned at your sides. Supinate at the top. Lower slowly for maximum stretch.',
@@ -118,12 +123,16 @@ const EXERCISE_NOTES = {
 
 // Add your images to assets/exercises/ and replace null with require('./assets/exercises/filename.jpg')
 const EXERCISE_IMAGES = {
-  'Incline Bench': require('./assets/exercises/incline-bench.jpg'), // incline-bench.jpg
-  'Seated Cable Fly': require('./assets/exercises/seated-cable-fly.jpg'), // seated-cable-fly.jpg
-  'Weighted Pull Ups': require('./assets/exercises/weighted-pull-ups.jpg'), // weighted-pull-ups.jpg
-  'Cable Side Lateral Raise': require('./assets/exercises/cable-side-lateral-raise.jpg'), // cable-side-lateral-raise.jpg
-  'Deficit Pendlay Row': require('./assets/exercises/deficit-pendlay-row.jpg'), // deficit-pendlay-row.jpg
-  'Bench Press':            null, // bench-press.jpg
+  'Incline Bench': require('./assets/exercises/Mon Upper Body/incline-bench.jpg'), // incline-bench.jpg
+  'Seated Cable Fly': require('./assets/exercises/Mon Upper Body/seated-cable-fly.jpg'), // seated-cable-fly.jpg
+  'Weighted Pull Ups': require('./assets/exercises/Mon Upper Body/weighted-pull-ups.jpg'), // weighted-pull-ups.jpg
+  'Cable Lateral Raise': require('./assets/exercises/Mon Upper Body/cable-lateral-raise.jpg'), // cable-side-lateral-raise.jpg
+  'Deficit Pendlay Row': require('./assets/exercises/Mon Upper Body/deficit-pendlay-row.jpg'), // deficit-pendlay-row.jpg
+  'Bench Press': require('./assets/exercises/Thurs Push/bench-press.jpg'),
+  'Machine Shoulder Press': require('./assets/exercises/Thurs Push/shoulder-press.jpg'),
+  'Pec Deck': require('./assets/exercises/Thurs Push/pec-deck.jpg'),
+  'Overhead Extension': require('./assets/exercises/Thurs Push/Overhead Extension.jpg'),
+  'Cable Kickback': require('./assets/exercises/Thurs Push/cable-kickbacks.jpg'),
   'Overhead Press':         null, // overhead-press.jpg (OHP)
   'Pull-Ups':               null, // pull-ups.jpg
   'Bicep Curls':            null, // bicep-curls.jpg

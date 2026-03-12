@@ -49,47 +49,10 @@ const WORKOUT_PLANS = {
   ]),
 };
 
-const PT_PLANS = {
-  'Knee': [
-    { day: 'Phase 1 – Early Recovery', exercises: ['Quad Sets 3×15', 'Heel Slides 3×12', 'Straight Leg Raises 3×10', 'Ankle Pumps 3×15', 'Seated Knee Extensions 3×10'] },
-    { day: 'Phase 2 – Strengthening', exercises: ['Mini Squats 3×12', 'Terminal Knee Extensions 3×15', 'Step-Ups 3×10', 'Clamshells 3×12', 'Single Leg Balance 3×20s'] },
-    { day: 'Phase 3 – Return to Activity', exercises: ['Leg Press 3×12', 'Bulgarian Split Squat 3×8', 'Nordic Curl Negatives 3×5', 'Lateral Band Walks 3×15', 'Single Leg RDL 3×10'] },
-  ],
-  'Shoulder': [
-    { day: 'Phase 1 – Pain Relief & Mobility', exercises: ['Pendulum Swings 3×10', 'Wall Slides 3×12', 'Cross-Body Stretch 3×30s', 'Scapular Retractions 3×15', 'Chin Tucks 3×10'] },
-    { day: 'Phase 2 – Rotator Cuff Strengthening', exercises: ['Band External Rotation 3×15', 'Band Internal Rotation 3×15', 'Y-T-W Raises 3×10', 'Serratus Punches 3×12', 'Face Pulls 3×15'] },
-    { day: 'Phase 3 – Functional Strength', exercises: ['DB Press (light) 3×10', 'Cable Rows 3×12', 'Lateral Raises 3×12', 'Arnold Press 3×10', 'Push-Up Plus 3×12'] },
-  ],
-  'Lower Back': [
-    { day: 'Phase 1 – Acute Care', exercises: ['Pelvic Tilts 3×12', 'Knee-to-Chest Stretch 3×30s', 'Cat-Cow 3×10', 'Supine Spinal Twist 3×30s', 'Diaphragmatic Breathing 5min'] },
-    { day: 'Phase 2 – Core Stability', exercises: ['Dead Bug 3×10', 'Bird Dog 3×10', 'Glute Bridges 3×15', 'Side Plank 3×20s', 'Pallof Press 3×12'] },
-    { day: 'Phase 3 – Functional Movement', exercises: ['Romanian Deadlift (light) 3×10', 'Goblet Squat 3×12', 'Suitcase Carry 3×30m', 'McGill Curl-Up 3×10', 'Hip Hinge Practice 3×10'] },
-  ],
-  'Hip': [
-    { day: 'Phase 1 – Mobility & Activation', exercises: ['Hip 90-90 Stretch 3×30s', 'Pigeon Pose 3×45s', 'Hip Flexor Stretch 3×30s', 'Clamshells 3×12', 'Supine Hip Rotations 3×10'] },
-    { day: 'Phase 2 – Strengthening', exercises: ['Glute Bridges 3×15', 'Side-Lying Hip Abduction 3×12', 'Step-Ups 3×10', 'Lateral Band Walks 3×15', 'Single Leg Balance 3×30s'] },
-    { day: 'Phase 3 – Functional Loading', exercises: ['Hip Thrusts 3×12', 'Bulgarian Split Squat 3×10', 'Single Leg RDL 3×10', 'Monster Walks 3×15', 'Reverse Lunges 3×10'] },
-  ],
-  'Ankle & Foot': [
-    { day: 'Phase 1 – Mobility & RICE', exercises: ['Ankle Circles 3×10', 'Alphabet Tracing (foot) 2×1', 'Towel Scrunches 3×15', 'Calf Stretch 3×30s', 'Plantar Fascia Stretch 3×30s'] },
-    { day: 'Phase 2 – Strength & Balance', exercises: ['Calf Raises 3×15', 'Single Leg Calf Raises 3×12', 'Heel Walks 3×20 steps', 'Toe Walks 3×20 steps', 'Single Leg Balance 3×30s'] },
-    { day: 'Phase 3 – Dynamic Stability', exercises: ['Single Leg Balance on Foam 3×30s', 'Lateral Hops (small) 3×10', 'Heel-to-Toe Walk 3×10m', 'Step-Downs 3×10', 'Jump Rope (easy) 3×30s'] },
-  ],
-  'Neck': [
-    { day: 'Phase 1 – Pain Relief', exercises: ['Chin Tucks 3×10', 'Neck Lateral Stretch 3×30s', 'Neck Rotation Stretch 3×30s', 'Shoulder Rolls 3×10', 'Upper Trap Stretch 3×30s'] },
-    { day: 'Phase 2 – Strengthening', exercises: ['Isometric Neck Flexion 3×10s', 'Isometric Neck Extension 3×10s', 'Isometric Lateral Flexion 3×10s', 'Scapular Squeezes 3×15', 'Band Pull-Aparts 3×12'] },
-    { day: 'Phase 3 – Functional', exercises: ['Deep Neck Flexor Training 3×10', 'Thoracic Extension 3×10', 'Face Pulls 3×15', 'Posture Walk 3×1min', 'Foam Roll Thoracic Spine'] },
-  ],
-  'Wrist & Elbow': [
-    { day: 'Phase 1 – Mobility', exercises: ['Wrist Circles 3×10', 'Prayer Stretch 3×30s', 'Reverse Prayer Stretch 3×30s', 'Forearm Stretch 3×30s', 'Grip Squeeze 3×15'] },
-    { day: 'Phase 2 – Strengthening', exercises: ['Wrist Curls 3×15', 'Reverse Wrist Curls 3×15', 'Hammer Curls (light) 3×12', 'Pronation & Supination 3×12', 'Finger Extensions 3×15'] },
-    { day: 'Phase 3 – Functional Load', exercises: ['Push-Up on Fists 3×10', 'Farmer Carry (light) 3×30m', 'Cable Rows 3×12', 'Plate Pinch 3×20s', 'Reverse Curls 3×12'] },
-  ],
-};
 
 const QUESTIONS = [
   { key: 'name', label: "What's your name?", placeholder: 'Enter your name', type: 'text' },
-  { key: 'goal', label: 'What are you looking to do?', type: 'choice', options: ['Building Muscle - Men', 'Building Muscle - Women', 'Nutrition Plan', 'Physical Therapy'] },
+  { key: 'goal', label: 'What are you looking to do?', type: 'choice', options: ['Building Muscle - Men', 'Building Muscle - Women', 'Nutrition Plan'] },
 ];
 
 const EXERCISE_NOTES = {
@@ -392,10 +355,7 @@ export default function Root() {
       setScreen('nutrition');
       return;
     }
-    if (key === 'goal' && value === 'Physical Therapy') {
-      setScreen('physicalTherapy');
-      return;
-    }
+
     if (key === 'goal' && (value === 'Building Muscle - Men' || value === 'Building Muscle - Women')) {
       setPlan(WORKOUT_PLANS[value]);
       setScreen('plan');
@@ -648,45 +608,16 @@ export default function Root() {
     );
   }
 
-  // ── Physical Therapy Screen ───────────────────────────────
-  if (screen === 'physicalTherapy') {
-    const bodyParts = Object.keys(PT_PLANS);
-    return (
-      <View style={styles.container}>
-        <TouchableOpacity onPress={() => { setStep(1); setScreen('quiz'); }} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Physical Therapy</Text>
-        <Text style={styles.subtitle}>Select the area you want to work on</Text>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-          {bodyParts.map(part => (
-            <TouchableOpacity key={part} style={styles.card} onPress={() => {
-              setPlan(PT_PLANS[part]);
-              setAnswers(a => ({ ...a, ptBodyPart: part }));
-              setScreen('plan');
-            }}>
-              <View style={styles.cardRow}>
-                <Text style={styles.dayTitle}>{part}</Text>
-                <Text style={styles.chevron}>›</Text>
-              </View>
-              <Text style={styles.exerciseCount}>{PT_PLANS[part].length} phases</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-    );
-  }
 
   // ── Plan Overview Screen ─────────────────────────────────
   if (screen === 'plan') {
-    const isPT = answers.goal === 'Physical Therapy';
     return (
       <View style={styles.container}>
-        <TouchableOpacity onPress={() => isPT ? setScreen('physicalTherapy') : restart()} style={styles.backBtn}>
+        <TouchableOpacity onPress={restart} style={styles.backBtn}>
           <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>{isPT ? `${answers.ptBodyPart} Rehab` : 'Your Workout Plan'}</Text>
-        <Text style={styles.subtitle}>{isPT ? answers.name : (answers.goal === 'Building Muscle - Men' || answers.goal === 'Building Muscle - Women') ? `${answers.name}'s ${answers.goal} Plan` : `${answers.name}'s ${answers.goal} Plan · ${answers.level}`}</Text>
+        <Text style={styles.title}>Your Workout Plan</Text>
+        <Text style={styles.subtitle}>{`${answers.name}'s ${answers.goal} Plan`}</Text>
         <FlatList
           data={plan}
           keyExtractor={(_, i) => i.toString()}

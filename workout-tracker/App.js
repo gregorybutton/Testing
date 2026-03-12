@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Alert,
   FlatList,
@@ -340,6 +341,16 @@ export default function Root() {
   const [nutritionForm, setNutritionForm] = useState({ age: '', gender: '', heightFt: '', heightIn: '', weight: '', activityLevel: '' });
   const [nutritionResult, setNutritionResult] = useState(null);
   const [stretchImgModal, setStretchImgModal] = useState(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem('logs').then(val => {
+      if (val) setLogs(JSON.parse(val));
+    });
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem('logs', JSON.stringify(logs));
+  }, [logs]);
 
   function logKey(dayTitle, exercise) {
     return `${dayTitle}|${exercise}`;

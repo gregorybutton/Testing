@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   Alert,
   FlatList,
@@ -17,7 +18,7 @@ import {
 } from 'react-native';
 
 const COLORS = {
-  bg: '#13132b',
+  bg: '#0a0a0a',
   card: '#1c1c3a',
   accent: '#e94560',
   text: '#ffffff',
@@ -175,6 +176,12 @@ const EXERCISE_DB_ALIASES = {
   'Cable Tricep Pushdowns':      { name: 'reverse grip triceps pushdown', index: 0 },
 };
 
+const COMPOUND_KEYWORDS = ['bench', 'squat', 'deadlift', 'row', 'pull', 'press', 'lunge', 'hip thrust', 'dip', 'chin'];
+function getRestSuggestion(exerciseName) {
+  const n = cleanExerciseName(exerciseName).toLowerCase();
+  return COMPOUND_KEYWORDS.some(k => n.includes(k)) ? 180 : 60;
+}
+
 function parseSetsReps(name) {
   const match = name.match(/(\d+)[×xX](\d+(?:-\d+)?)/);
   if (!match) return null;
@@ -266,8 +273,8 @@ function ExerciseImage({ exerciseName, exerciseDbImages = {} }) {
     <>
       <TouchableOpacity onPress={() => setEnlarged(true)}>
         {(clean === 'Weighted Pull Ups' || clean === 'Machine Shoulder Press') ? (
-          <View style={{ width: 140, height: 90, borderRadius: 8, overflow: 'hidden' }}>
-            <Image source={source} style={{ width: 140, height: 180 }} resizeMode="cover" />
+          <View style={{ width: 120, height: 76, borderRadius: 8, overflow: 'hidden' }}>
+            <Image source={source} style={{ width: 120, height: 152 }} resizeMode="cover" />
           </View>
         ) : (
           <Image source={source} style={styles.exImg} resizeMode="cover" />
@@ -385,7 +392,59 @@ function calculateTDEE(age, gender, heightFt, heightIn, weightLbs, activityLevel
   return Math.round(bmr * multipliers[activityLevel]);
 }
 
-export default function Root() {
+function formatTime(s) {
+  return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+}
+
+function CircularProgress({ progress, size = 210, strokeWidth = 14 }) {
+  const half = size / 2;
+  const color = '#4ade80';
+  const rightRotate = `${Math.min(progress, 0.5) * 360 - 180}deg`;
+  const leftRotate = `${Math.max(progress - 0.5, 0) * 360}deg`;
+  return (
+    <View style={{ width: size, height: size }}>
+      <View style={{ position: 'absolute', width: size, height: size, borderRadius: half, borderWidth: strokeWidth, borderColor: '#2a2a2a' }} />
+      <View style={{ position: 'absolute', right: 0, width: half, height: size, overflow: 'hidden' }}>
+        <View style={{ position: 'absolute', left: -half, width: size, height: size, borderRadius: half, borderWidth: strokeWidth, borderColor: color, transform: [{ rotate: rightRotate }] }} />
+      </View>
+      {progress > 0.5 && (
+        <View style={{ position: 'absolute', left: 0, width: half, height: size, overflow: 'hidden' }}>
+          <View style={{ position: 'absolute', right: -half, width: size, height: size, borderRadius: half, borderWidth: strokeWidth, borderColor: color, transform: [{ rotate: leftRotate }] }} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+class ErrorBoundary extends React.Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: 'bold', marginBottom: 12 }}>Something went wrong</Text>
+          <Text style={{ color: COLORS.muted, textAlign: 'center', marginBottom: 28 }}>
+            An unexpected error occurred. Your data is safe — please try again.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: COLORS.accent, paddingVertical: 14, paddingHorizontal: 32, borderRadius: 10 }}
+            onPress={() => this.setState({ hasError: false })}
+          >
+            <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 16 }}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function Root() {
   const [textVal, setTextVal] = useState('');
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -400,8 +459,14 @@ export default function Root() {
   const [nutritionResult, setNutritionResult] = useState(null);
   const [stretchImgModal, setStretchImgModal] = useState(null);
   const [user, setUser] = useState(null);
-  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', gender: '' });
+  const [restTimerDuration, setRestTimerDuration] = useState(60);
+  const [restTimerRemaining, setRestTimerRemaining] = useState(60);
+  const [restTimerRunning, setRestTimerRunning] = useState(false);
+  const [restingForExercise, setRestingForExercise] = useState(null);
+  const [activeExerciseIndex, setActiveExerciseIndex] = useState(0);
+  const [authForm, setAuthForm] = useState({ name: '', email: 'gbutton11@hotmail.com', password: 'Unicycle12!', gender: '' });
   const [authError, setAuthError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [exerciseDbImages, setExerciseDbImages] = useState({});
 
   useEffect(() => {
@@ -424,6 +489,22 @@ export default function Root() {
   useEffect(() => {
     AsyncStorage.setItem('logs', JSON.stringify(logs));
   }, [logs]);
+
+  useEffect(() => {
+    if (!restTimerRunning) return;
+    if (restTimerRemaining <= 0) { setRestTimerRunning(false); return; }
+    const interval = setInterval(() => {
+      setRestTimerRemaining(r => {
+        if (r <= 1) {
+          setRestTimerRunning(false);
+          setActiveExerciseIndex(i => i + 1);
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [restTimerRunning, restTimerRemaining]);
 
   useEffect(() => {
     const CACHE_KEY = 'exerciseDbCache';
@@ -588,6 +669,13 @@ export default function Root() {
     const existing = logs[key] || [];
     setLogs(prev => ({ ...prev, [key]: [...existing, { week: existing.length + 1, weight }] }));
     setLogModalVisible(false);
+    const suggested = getRestSuggestion(loggingExercise);
+    setRestingForExercise(loggingExercise);
+    setRestTimerDuration(suggested);
+    setRestTimerRemaining(suggested);
+    setRestTimerRunning(true);
+    const idx = selectedDay?.exercises.indexOf(loggingExercise);
+    if (idx !== undefined && idx !== -1) setActiveExerciseIndex(idx);
   }
 
   const question = QUESTIONS[step];
@@ -661,12 +749,29 @@ export default function Root() {
   if (screen === 'login') {
     return (
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Log in to your account</Text>
-          <View style={styles.questionCard}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 }} keyboardShouldPersistTaps="handled">
+          {/* Logo */}
+          <View style={{ alignItems: 'center', marginBottom: 32 }}>
+            <View style={{
+              width: 90, height: 90, borderRadius: 45,
+              backgroundColor: '#2a0a10',
+              borderWidth: 2, borderColor: COLORS.accent,
+              justifyContent: 'center', alignItems: 'center',
+              shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 20,
+              elevation: 12,
+            }}>
+              <Text style={{ fontSize: 38 }}>🏋️</Text>
+            </View>
+          </View>
+
+          <Text style={{ color: COLORS.text, fontSize: 30, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>Welcome Back</Text>
+          <Text style={{ color: COLORS.muted, fontSize: 15, textAlign: 'center', marginBottom: 36 }}>Log in to continue</Text>
+
+          {/* Email field */}
+          <View style={styles.authField}>
+            <Text style={{ color: COLORS.muted, fontSize: 16, marginRight: 12 }}>✉</Text>
             <TextInput
-              style={styles.input}
+              style={styles.authInput}
               placeholder="Email"
               placeholderTextColor={COLORS.muted}
               value={authForm.email}
@@ -674,22 +779,51 @@ export default function Root() {
               keyboardType="email-address"
               autoCapitalize="none"
             />
+          </View>
+
+          {/* Password field */}
+          <View style={styles.authField}>
+            <Text style={{ color: COLORS.muted, fontSize: 16, marginRight: 12 }}>🔒</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.authInput, { flex: 1 }]}
               placeholder="Password"
               placeholderTextColor={COLORS.muted}
               value={authForm.password}
               onChangeText={v => setAuthForm(f => ({ ...f, password: v }))}
-              secureTextEntry
+              secureTextEntry={!showPassword}
             />
-            {authError ? <Text style={styles.authError}>{authError}</Text> : null}
-            <TouchableOpacity style={styles.button} onPress={handleLogin}>
-              <Text style={styles.buttonText}>Log In</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => { setAuthError(''); setScreen('register'); }} style={{ marginTop: 16, alignItems: 'center' }}>
-              <Text style={{ color: COLORS.muted }}>Don't have an account? <Text style={{ color: COLORS.accent }}>Register</Text></Text>
+            <TouchableOpacity
+              style={{ backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 }}
+              onPress={() => setShowPassword(s => !s)}
+            >
+              <Text style={{ color: COLORS.text, fontSize: 12, fontWeight: '700' }}>{showPassword ? 'Hide' : 'Show'}</Text>
             </TouchableOpacity>
           </View>
+
+          {authError ? <Text style={[styles.authError, { marginBottom: 12 }]}>{authError}</Text> : null}
+
+          {/* Log In button */}
+          <TouchableOpacity
+            style={{ backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 17, alignItems: 'center', marginBottom: 20 }}
+            onPress={handleLogin}
+          >
+            <Text style={{ color: COLORS.text, fontSize: 17, fontWeight: 'bold' }}>Log In</Text>
+          </TouchableOpacity>
+
+          {/* Forgot password */}
+          <TouchableOpacity style={{ alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ color: COLORS.muted, fontSize: 14 }}>Forgot password?</Text>
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={{ height: 1, backgroundColor: '#2a2a4a', marginBottom: 20 }} />
+
+          {/* Sign up link */}
+          <TouchableOpacity onPress={() => { setAuthError(''); setScreen('register'); }} style={{ alignItems: 'center' }}>
+            <Text style={{ color: COLORS.muted, fontSize: 14 }}>
+              Don't have an account?{'  '}<Text style={{ color: COLORS.accent, fontWeight: '600' }}>Sign Up</Text>
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -920,6 +1054,76 @@ export default function Root() {
   }
 
 
+  // ── Rest Timer Screen ────────────────────────────────────
+  if (screen === 'restTimer') {
+    const progress = restTimerRemaining / restTimerDuration;
+    const durations = [30, 60, 90, 120];
+    return (
+      <View style={[styles.container, { alignItems: 'center' }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 8 }}>
+          <TouchableOpacity onPress={() => { setRestTimerRunning(false); setScreen('day'); }} style={styles.backBtn}>
+            <Text style={styles.backText}>‹ Back</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.title}>Rest Timer</Text>
+
+        {/* Duration selector */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 32 }}>
+          {durations.map(d => (
+            <TouchableOpacity
+              key={d}
+              style={[styles.pill, { paddingHorizontal: 14, paddingVertical: 6, backgroundColor: restTimerDuration === d ? COLORS.accent : '#3a3a6a' }]}
+              onPress={() => { setRestTimerDuration(d); setRestTimerRemaining(d); setRestTimerRunning(false); }}
+            >
+              <Text style={[styles.pillText, { color: COLORS.text }]}>{d}s</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Circular timer */}
+        <View style={{ justifyContent: 'center', alignItems: 'center', marginBottom: 40 }}>
+          <CircularProgress progress={progress} />
+          <View style={{ position: 'absolute', alignItems: 'center' }}>
+            <Text style={{ color: COLORS.text, fontSize: 48, fontWeight: 'bold', letterSpacing: 2 }}>
+              {formatTime(restTimerRemaining)}
+            </Text>
+            <Text style={{ color: COLORS.muted, fontSize: 13 }}>
+              {restTimerRemaining === 0 ? 'Done!' : `Remaining`}
+            </Text>
+          </View>
+        </View>
+
+        {/* Controls */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+          <TouchableOpacity
+            style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#2a2a4a', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => { setRestTimerRemaining(restTimerDuration); setRestTimerRunning(false); }}
+          >
+            <Text style={{ fontSize: 26, color: COLORS.text }}>↺</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ width: 80, height: 80, borderRadius: 20, backgroundColor: '#4ade80', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => setRestTimerRunning(r => !r)}
+          >
+            {restTimerRunning
+              ? <View style={{ flexDirection: 'row', gap: 5 }}>
+                  <View style={{ width: 8, height: 26, backgroundColor: '#1a1a2e', borderRadius: 2 }} />
+                  <View style={{ width: 8, height: 26, backgroundColor: '#1a1a2e', borderRadius: 2 }} />
+                </View>
+              : <View style={{ width: 0, height: 0, borderTopWidth: 16, borderBottomWidth: 16, borderLeftWidth: 26, borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#1a1a2e', marginLeft: 4 }} />
+            }
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#2a2a4a', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => { setRestTimerRemaining(0); setRestTimerRunning(false); }}
+          >
+            <View style={{ width: 20, height: 20, backgroundColor: COLORS.text, borderRadius: 3 }} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   // ── Plan Overview Screen ─────────────────────────────────
   if (screen === 'plan') {
     return (
@@ -937,7 +1141,7 @@ export default function Root() {
           data={plan}
           keyExtractor={(_, i) => i.toString()}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} onPress={() => { setSelectedDay(item); setScreen('day'); }}>
+            <TouchableOpacity style={styles.card} onPress={() => { setSelectedDay(item); setActiveExerciseIndex(0); setRestTimerRunning(false); setRestingForExercise(null); setScreen('day'); }}>
               <View style={styles.cardRow}>
                 <Text style={styles.dayTitle}>{item.day}</Text>
                 <Text style={styles.chevron}>›</Text>
@@ -952,104 +1156,248 @@ export default function Root() {
 
   // ── Day Detail Screen ────────────────────────────────────
   if (screen === 'day') {
+    const isRestDay = selectedDay.day.includes('Rest');
+    const workoutExercises = isRestDay
+      ? []
+      : selectedDay.exercises.filter(e =>
+          !e.includes('Full Body Stretching') && !e.includes('Full Body Foam Rolling') && !e.includes('Incline Walk')
+        );
+    const loggedCount = workoutExercises.filter(e => (logs[logKey(selectedDay.day, e)] || []).length > 0).length;
+    const totalExercises = workoutExercises.length;
+    const progressFraction = totalExercises > 0 ? loggedCount / totalExercises : 0;
+    const estimatedMinutes = totalExercises * 8;
+
+    function getSmartPill(exerciseName) {
+      const data = logs[logKey(selectedDay.day, exerciseName)] || [];
+      if (data.length === 0) return null;
+      const latest = parseFloat(data[data.length - 1].weight);
+      const allTime = Math.max(...data.map(d => parseFloat(d.weight)));
+      const prev = data.length > 1 ? parseFloat(data[data.length - 2].weight) : null;
+      if (data.length > 1 && latest >= allTime && latest > prev) {
+        return { label: `🏆 PR: ${latest} lbs`, color: '#fbbf24', bg: '#3a2a00', border: '#fbbf24' };
+      }
+      if (prev !== null && latest > prev) {
+        return { label: `↑ +${(latest - prev).toFixed(0)} lbs`, color: '#4ade80', bg: '#1a3a2a', border: '#4ade80' };
+      }
+      return { label: `∿ Last: ${latest} lbs`, color: COLORS.muted, bg: '#2a2a4a', border: null };
+    }
+
     return (
       <View style={styles.container}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {/* Top nav row */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <TouchableOpacity onPress={() => setScreen('plan')} style={styles.backBtn}>
             <Text style={styles.backText}>‹ Back to Plan</Text>
           </TouchableOpacity>
-          <LogoutBtn />
+          <TouchableOpacity onPress={handleLogout} style={styles.backBtn}>
+            <Text style={[styles.backText, { color: '#ff6b6b' }]}>Log Out</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.title}>{selectedDay.day}</Text>
-        <FlatList
-          data={selectedDay.exercises}
-          keyExtractor={(_, i) => i.toString()}
-          renderItem={({ item }) => {
-            const entryCount = (logs[logKey(selectedDay.day, item)] || []).length;
-            const isStretching = item.includes('Full Body Stretching');
-            const isFoamRolling = item.includes('Full Body Foam Rolling');
-            const foamRollingItems = [
-              { label: 'Upper Back', duration: '1 min', emoji: '🔵' },
-              { label: 'Lats', duration: '45 sec each side', emoji: '🔵' },
-              { label: 'Glutes', duration: '45 sec each side', emoji: '🔵' },
-              { label: 'Hamstrings', duration: '1 min', emoji: '🔵' },
-              { label: 'Quads', duration: '1 min', emoji: '🔵' },
-              { label: 'Calves', duration: '45 sec each side', emoji: '🔵' },
-            ];
-            const stretchingItems = [
-              { label: 'Forward Fold', duration: '45 sec', img: require('./assets/stretches/forward-fold.jpg') },
-              { label: 'Hip Flexor', duration: '45 sec each side', img: require('./assets/stretches/hip-flexor.jpg') },
-              { label: 'Figure 4', duration: '45 sec each side', img: require('./assets/stretches/figure-4.jpg') },
-              { label: "Child's Pose", duration: '1 min', img: require('./assets/stretches/childs-pose.jpg') },
-              { label: 'Chest Stretch', duration: '45 sec each side', img: require('./assets/stretches/chest-stretch.jpg') },
-              { label: 'Spinal Twist', duration: '45 sec each side', img: require('./assets/stretches/spinal-twist.jpg') },
-              { label: 'Deep Squat', duration: '1 min', img: require('./assets/stretches/Deep Squat.jpg') },
-            ];
-            return (
-              <View style={styles.exerciseCard}>
-                <View style={[styles.exerciseCardTop, (isStretching || isFoamRolling) && { justifyContent: 'center' }]}>
-                  {!isStretching && !isFoamRolling && <ExerciseImage exerciseName={item} exerciseDbImages={exerciseDbImages} />}
-                  <View style={[styles.exerciseCardInfo, (isStretching || isFoamRolling) && { alignItems: 'center' }]}>
-                    <Text style={styles.exerciseName}>{cleanExerciseName(item)}</Text>
-                    {(() => { const sr = parseSetsReps(item); return sr ? (
-                      <View style={styles.pillRow}>
-                        <View style={styles.pill}><Text style={styles.pillText}>{sr.sets} sets</Text></View>
-                        <View style={styles.pill}><Text style={styles.pillText}>{sr.reps} reps</Text></View>
-                      </View>
-                    ) : null; })()}
-                    {!selectedDay.day.includes('Rest') && (
-                      <Text style={styles.logCount}>
-                        {entryCount > 0 ? `${entryCount} week${entryCount > 1 ? 's' : ''} logged` : 'No logs yet'}
-                      </Text>
+
+        {/* Title row with progress ring */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={[styles.title, { textAlign: 'left', marginBottom: 4 }]}>{selectedDay.day}</Text>
+            {!isRestDay && (
+              <Text style={{ color: COLORS.muted, fontSize: 13 }}>
+                ⏱ {totalExercises} exercises  •  ~{estimatedMinutes} min
+              </Text>
+            )}
+          </View>
+          {!isRestDay && (
+            <View style={{ alignItems: 'center', justifyContent: 'center', width: 76, height: 76 }}>
+              <CircularProgress progress={progressFraction} size={76} strokeWidth={6} />
+              <View style={{ position: 'absolute', alignItems: 'center' }}>
+                <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: 'bold' }}>
+                  {Math.round(progressFraction * 100)}%
+                </Text>
+                <Text style={{ color: COLORS.muted, fontSize: 9 }}>Complete</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Inline rest banner — always visible on workout days */}
+        {!isRestDay && (() => {
+          const activeEx = workoutExercises[activeExerciseIndex] ?? workoutExercises[0];
+          const bannerName = restTimerRunning && restingForExercise
+            ? cleanExerciseName(restingForExercise)
+            : activeEx ? cleanExerciseName(activeEx) : '';
+          const suggested = activeEx ? getRestSuggestion(activeEx) : 60;
+          const progressWidth = restTimerRunning
+            ? `${(restTimerRemaining / restTimerDuration) * 100}%`
+            : '0%';
+
+          return (
+            <View style={styles.restBanner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+                <Text style={{ color: '#4ade80', fontSize: 10, fontWeight: '800', letterSpacing: 1.2 }}>⏻  REST TIMER</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={{ color: COLORS.text, fontSize: 16, fontWeight: 'bold', flex: 1, marginRight: 12 }} numberOfLines={1}>
+                  {bannerName}{' '}
+                  <Text style={{ color: '#4ade80' }}>
+                    {restTimerRunning ? `• ${formatTime(restTimerRemaining)}` : `• ${formatTime(suggested)}`}
+                  </Text>
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {restTimerRunning ? (
+                    <>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#2a2a3e', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 }}
+                        onPress={() => { setRestTimerRunning(false); setRestTimerRemaining(0); setRestingForExercise(null); }}
+                      >
+                        <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '600' }}>Skip</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 }}
+                        onPress={() => setRestTimerRemaining(r => Math.min(r + 30, restTimerDuration))}
+                      >
+                        <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '700' }}>+30s</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#4ade80', borderRadius: 20, paddingHorizontal: 18, paddingVertical: 7 }}
+                      onPress={() => {
+                        setRestingForExercise(activeEx);
+                        setRestTimerDuration(suggested);
+                        setRestTimerRemaining(suggested);
+                        setRestTimerRunning(true);
+                      }}
+                    >
+                      <Text style={{ color: '#000', fontSize: 13, fontWeight: '700' }}>Start</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+              <View style={{ height: 3, backgroundColor: '#1a2a1a', borderRadius: 2 }}>
+                <View style={{ height: 3, backgroundColor: '#4ade80', borderRadius: 2, width: progressWidth }} />
+              </View>
+            </View>
+          );
+        })()}
+
+        <View style={{ flex: 1 }}>
+          <FlatList
+            data={selectedDay.exercises}
+            keyExtractor={(_, i) => i.toString()}
+            renderItem={({ item, index }) => {
+              const entryLogs = logs[logKey(selectedDay.day, item)] || [];
+              const isStretching = item.includes('Full Body Stretching');
+              const isFoamRolling = item.includes('Full Body Foam Rolling');
+              const isResting = restTimerRunning && restingForExercise === item;
+              const isActive = !isRestDay && !isStretching && !isFoamRolling && index === activeExerciseIndex;
+              const sr = parseSetsReps(item);
+              const smartPill = (!isStretching && !isFoamRolling && !isRestDay) ? getSmartPill(item) : null;
+              const restSecs = (!isStretching && !isFoamRolling && !isRestDay) ? getRestSuggestion(item) : null;
+              const restLabel = restSecs === 180 ? '3 min rest' : restSecs === 60 ? '1 min rest' : null;
+              const foamRollingItems = [
+                { label: 'Upper Back', duration: '1 min', emoji: '🔵' },
+                { label: 'Lats', duration: '45 sec each side', emoji: '🔵' },
+                { label: 'Glutes', duration: '45 sec each side', emoji: '🔵' },
+                { label: 'Hamstrings', duration: '1 min', emoji: '🔵' },
+                { label: 'Quads', duration: '1 min', emoji: '🔵' },
+                { label: 'Calves', duration: '45 sec each side', emoji: '🔵' },
+              ];
+              const stretchingItems = [
+                { label: 'Forward Fold', duration: '45 sec', img: require('./assets/stretches/forward-fold.jpg') },
+                { label: 'Hip Flexor', duration: '45 sec each side', img: require('./assets/stretches/hip-flexor.jpg') },
+                { label: 'Figure 4', duration: '45 sec each side', img: require('./assets/stretches/figure-4.jpg') },
+                { label: "Child's Pose", duration: '1 min', img: require('./assets/stretches/childs-pose.jpg') },
+                { label: 'Chest Stretch', duration: '45 sec each side', img: require('./assets/stretches/chest-stretch.jpg') },
+                { label: 'Spinal Twist', duration: '45 sec each side', img: require('./assets/stretches/spinal-twist.jpg') },
+                { label: 'Deep Squat', duration: '1 min', img: require('./assets/stretches/Deep Squat.jpg') },
+              ];
+              return (
+                <TouchableOpacity
+                  style={[styles.exerciseCard, isActive && { borderLeftWidth: 3, borderLeftColor: COLORS.accent }, isResting && { borderColor: '#4ade8044', borderWidth: 1 }]}
+                  onPress={() => { if (!isStretching && !isFoamRolling && !isRestDay) { setSelectedExercise(item); setScreen('progress'); } }}
+                  activeOpacity={(isStretching || isFoamRolling || isRestDay) ? 1 : 0.75}
+                >
+                  <View style={[styles.exerciseCardTop, (isStretching || isFoamRolling) && { justifyContent: 'center' }]}>
+                    {!isStretching && !isFoamRolling && <ExerciseImage exerciseName={item} exerciseDbImages={exerciseDbImages} />}
+                    <View style={[styles.exerciseCardInfo, (isStretching || isFoamRolling) && { alignItems: 'center' }]}>
+                      <Text style={styles.exerciseName}>{cleanExerciseName(item)}</Text>
+                      {sr && (
+                        <View style={styles.pillRow}>
+                          <View style={styles.pill}><Text style={styles.pillText}>{sr.sets} sets</Text></View>
+                          <View style={styles.pill}><Text style={styles.pillText}>{sr.reps} reps</Text></View>
+                          {smartPill && (
+                            <View style={[styles.pill, { backgroundColor: smartPill.bg, borderWidth: smartPill.border ? 1 : 0, borderColor: smartPill.border || 'transparent' }]}>
+                              <Text style={[styles.pillText, { color: smartPill.color }]}>{smartPill.label}</Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                      {!isRestDay && !isStretching && !isFoamRolling && (
+                        isResting
+                          ? <Text style={{ color: '#4ade80', fontSize: 12, fontWeight: '600', marginTop: 2 }}>Resting • {formatTime(restTimerRemaining)}</Text>
+                          : entryLogs.length === 0
+                            ? <Text style={styles.logCount}>No logs yet</Text>
+                            : null
+                      )}
+                      {restLabel && !isResting && (
+                        <Text style={{ color: COLORS.muted, fontSize: 11, marginTop: 2 }}>⏱ {restLabel}</Text>
+                      )}
+                    </View>
+                    {!isStretching && !isFoamRolling && !isRestDay && (
+                      <Text style={[styles.chevron, { fontSize: 22, color: COLORS.muted }]}>›</Text>
                     )}
                   </View>
-                </View>
-                {isFoamRolling && (
-                  <View style={styles.stretchGrid}>
-                    {foamRollingItems.map((s, i) => (
-                      <View key={i} style={styles.stretchItem}>
-                        <Text style={styles.stretchEmoji}>{s.emoji}</Text>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.stretchLabel}>{s.label}</Text>
-                          <Text style={styles.stretchDuration}>{s.duration}</Text>
+                  {isFoamRolling && (
+                    <View style={styles.stretchGrid}>
+                      {foamRollingItems.map((s, i) => (
+                        <View key={i} style={styles.stretchItem}>
+                          <Text style={styles.stretchEmoji}>{s.emoji}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.stretchLabel}>{s.label}</Text>
+                            <Text style={styles.stretchDuration}>{s.duration}</Text>
+                          </View>
                         </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                {isStretching && (
-                  <View style={styles.stretchGrid}>
-                    {stretchingItems.map((s, i) => (
-                      <View key={i} style={styles.stretchItem}>
-                        <TouchableOpacity onPress={() => setStretchImgModal(s)}>
-                          <Image source={s.img} style={styles.stretchImg} resizeMode="cover" />
-                        </TouchableOpacity>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.stretchLabel}>{s.label}</Text>
-                          <Text style={styles.stretchDuration}>{s.duration}</Text>
+                      ))}
+                    </View>
+                  )}
+                  {isStretching && (
+                    <View style={styles.stretchGrid}>
+                      {stretchingItems.map((s, i) => (
+                        <View key={i} style={styles.stretchItem}>
+                          <TouchableOpacity onPress={() => setStretchImgModal(s)}>
+                            <Image source={s.img} style={styles.stretchImg} resizeMode="cover" />
+                          </TouchableOpacity>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.stretchLabel}>{s.label}</Text>
+                            <Text style={styles.stretchDuration}>{s.duration}</Text>
+                          </View>
                         </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                {!selectedDay.day.includes('Rest') && (
-                  <View style={styles.exerciseBtns}>
-                    <TouchableOpacity style={styles.logBtn} onPress={() => openLogModal(item)}>
-                      <Text style={styles.logBtnText}>+ Log Weight</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.logBtn, styles.progressBtn]}
-                      onPress={() => { setSelectedExercise(item); setScreen('progress'); }}
-                    >
-                      <Text style={styles.logBtnText}>See Progress</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            );
-          }}
-          contentContainerStyle={{ paddingBottom: 40 }}
-        />
+                      ))}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            }}
+            contentContainerStyle={{ paddingBottom: 20 }}
+          />
+        </View>
+
+        {/* Finish Workout bar */}
+        {!isRestDay && (
+          <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 12 }}>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 15, gap: 10 }}
+              onPress={() => Alert.alert('Finish Workout', 'Great work! Workout complete.', [{ text: 'Done', onPress: () => setScreen('plan') }])}
+            >
+              <View style={{ width: 0, height: 0, borderTopWidth: 8, borderBottomWidth: 8, borderLeftWidth: 13, borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#fff' }} />
+              <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 16 }}>Finish Workout</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ width: 52, backgroundColor: '#2a2a4a', borderRadius: 14, justifyContent: 'center', alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 20 }}>🚩</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <LogModal
           visible={logModalVisible}
           exercise={loggingExercise}
@@ -1086,6 +1434,61 @@ export default function Root() {
           </TouchableOpacity>
           <LogoutBtn />
         </View>
+
+        {/* Rest timer banner on progress screen */}
+        {(() => {
+          const suggested = getRestSuggestion(selectedExercise);
+          const isRunning = restTimerRunning && restingForExercise === selectedExercise;
+          const progressWidth = isRunning ? `${(restTimerRemaining / restTimerDuration) * 100}%` : '0%';
+          return (
+            <View style={[styles.restBanner, { marginBottom: 8 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+                <Text style={{ color: '#4ade80', fontSize: 10, fontWeight: '800', letterSpacing: 1.2 }}>⏻  REST TIMER</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={{ color: COLORS.text, fontSize: 16, fontWeight: 'bold', flex: 1, marginRight: 12 }} numberOfLines={1}>
+                  {cleanExerciseName(selectedExercise)}{' '}
+                  <Text style={{ color: '#4ade80' }}>
+                    {isRunning ? `• ${formatTime(restTimerRemaining)}` : `• ${formatTime(suggested)}`}
+                  </Text>
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {isRunning ? (
+                    <>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#2a2a3e', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 }}
+                        onPress={() => { setRestTimerRunning(false); setRestTimerRemaining(0); setRestingForExercise(null); }}
+                      >
+                        <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '600' }}>Skip</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 }}
+                        onPress={() => setRestTimerRemaining(r => Math.min(r + 30, restTimerDuration))}
+                      >
+                        <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '700' }}>+30s</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#4ade80', borderRadius: 20, paddingHorizontal: 18, paddingVertical: 7 }}
+                      onPress={() => {
+                        setRestingForExercise(selectedExercise);
+                        setRestTimerDuration(suggested);
+                        setRestTimerRemaining(suggested);
+                        setRestTimerRunning(true);
+                      }}
+                    >
+                      <Text style={{ color: '#000', fontSize: 13, fontWeight: '700' }}>Start</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+              <View style={{ height: 3, backgroundColor: '#1a2a1a', borderRadius: 2 }}>
+                <View style={{ height: 3, backgroundColor: '#4ade80', borderRadius: 2, width: progressWidth }} />
+              </View>
+            </View>
+          );
+        })()}
 
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
           {/* Header */}
@@ -1181,7 +1584,7 @@ export default function Root() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: 'transparent',
     paddingTop: 60,
     paddingHorizontal: 16,
   },
@@ -1235,6 +1638,8 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: 'bold' },
   authError: { color: '#ff6b6b', fontSize: 13, marginBottom: 12, textAlign: 'center' },
+  authField: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e1e32', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 14 },
+  authInput: { flex: 1, color: COLORS.text, fontSize: 15 },
   choices: { gap: 10 },
   choiceBtn: {
     backgroundColor: COLORS.input,
@@ -1246,7 +1651,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
   choiceText: { color: COLORS.text, fontSize: 16 },
-  goalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 14, padding: 16, gap: 14 },
+  goalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c3a55', borderRadius: 14, padding: 16, gap: 14, borderWidth: 1, borderColor: '#ffffff10' },
   goalEmoji: { fontSize: 32 },
   goalTitle: { color: COLORS.text, fontSize: 17, fontWeight: 'bold' },
   goalSubtitle: { color: COLORS.muted, fontSize: 13, marginTop: 2 },
@@ -1266,12 +1671,14 @@ const styles = StyleSheet.create({
   backBtn: { marginBottom: 12 },
   backText: { color: COLORS.accent, fontSize: 15 },
   exerciseCard: {
-    backgroundColor: COLORS.card,
+    backgroundColor: '#1c1c3a55',
+    borderWidth: 1,
+    borderColor: '#ffffff0d',
     borderRadius: 12,
-    padding: 14,
+    padding: 11,
     marginBottom: 10,
   },
-  exerciseCardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
+  exerciseCardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   stretchGrid: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   stretchItem: { flexDirection: 'row', alignItems: 'center', gap: 10, width: '47%', backgroundColor: COLORS.input, borderRadius: 10, padding: 10 },
   stretchNumber: { color: COLORS.muted, fontSize: 16, fontWeight: 'bold', width: 22, textAlign: 'center' },
@@ -1280,9 +1687,9 @@ const styles = StyleSheet.create({
   stretchLabel: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
   stretchDuration: { color: COLORS.muted, fontSize: 11 },
   exerciseCardInfo: { flex: 1 },
-  exImgBox: { width: 140, height: 90, borderRadius: 8, backgroundColor: COLORS.input, justifyContent: 'center', alignItems: 'center' },
-  exImgEmoji: { fontSize: 36 },
-  exImg: { width: 140, height: 90, borderRadius: 8, overflow: 'hidden' },
+  exImgBox: { width: 120, height: 76, borderRadius: 8, backgroundColor: COLORS.input, justifyContent: 'center', alignItems: 'center' },
+  exImgEmoji: { fontSize: 30 },
+  exImg: { width: 120, height: 76, borderRadius: 8, overflow: 'hidden' },
   progressImgRow: { alignItems: 'center', marginBottom: 16 },
   progressHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   title2: { fontSize: 18, fontWeight: 'bold', color: COLORS.text },
@@ -1299,7 +1706,7 @@ const styles = StyleSheet.create({
   dateCol: { flex: 1, textAlign: 'right' },
   weightValue: { fontWeight: 'bold', color: COLORS.text },
   entryNum: { color: COLORS.muted, fontSize: 11 },
-  exerciseName: { color: COLORS.text, fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
+  exerciseName: { color: COLORS.text, fontSize: 13, fontWeight: 'bold', marginBottom: 2 },
   pillRow: { flexDirection: 'row', gap: 4, marginBottom: 4 },
   pill: { backgroundColor: '#3a3a6a', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 },
   pillText: { color: '#d0d0f0', fontSize: 11, fontWeight: '600' },
@@ -1318,6 +1725,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.success,
   },
   logBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  restTimerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a3a2a', borderWidth: 1, borderColor: '#4ade80', borderRadius: 10, paddingVertical: 10, marginBottom: 12 },
+  restTimerBtnText: { color: '#4ade80', fontWeight: '700', fontSize: 15 },
   floatBtn: {
     position: 'absolute',
     bottom: 24,
@@ -1385,6 +1794,25 @@ const styles = StyleSheet.create({
   logWeek: { color: COLORS.muted, fontSize: 14 },
   logWeight: { color: COLORS.text, fontWeight: 'bold', fontSize: 14 },
   sectionLabel: { color: COLORS.text, fontWeight: 'bold', fontSize: 15, marginBottom: 8 },
+  restBanner: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
+  restBannerLabel: {
+    color: '#4ade80',
+    fontWeight: '700',
+    fontSize: 13,
+    flex: 1,
+  },
+  restBannerTime: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
   imgModalOverlay: { flex: 1, backgroundColor: '#000000ee', justifyContent: 'center', alignItems: 'center', padding: 20 },
   imgModalCard: { width: '100%' },
   imgModalFull: { width: '100%', borderTopLeftRadius: 12, borderTopRightRadius: 12, overflow: 'hidden' },
@@ -1392,3 +1820,19 @@ const styles = StyleSheet.create({
   imgModalTitle: { color: '#000000', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   imgModalNotes: { color: '#333333', fontSize: 13, lineHeight: 19 },
 });
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <LinearGradient
+        colors={['#0d0d1a', '#090910', '#050508']}
+        locations={[0, 0.6, 1]}
+        start={{ x: 0.4, y: 0 }}
+        end={{ x: 0.6, y: 1 }}
+        style={{ flex: 1 }}
+      >
+        <Root />
+      </LinearGradient>
+    </ErrorBoundary>
+  );
+}

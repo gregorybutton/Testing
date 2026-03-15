@@ -215,7 +215,7 @@ function getExerciseEmoji(name) {
 
 const EXERCISE_DB_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
 
-function ExerciseImage({ exerciseName, exerciseDbImages = {} }) {
+function ExerciseImage({ exerciseName, exerciseDbImages = {}, size = 120 }) {
   const [enlarged, setEnlarged] = useState(false);
   const [remoteAspectRatio, setRemoteAspectRatio] = useState(4 / 3);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -252,9 +252,11 @@ function ExerciseImage({ exerciseName, exerciseDbImages = {} }) {
     }
   }, [remoteUri]);
 
+  const thumbHeight = Math.round(size * (76 / 120));
+
   if (!source) {
     return (
-      <View style={styles.exImgBox}>
+      <View style={[styles.exImgBox, { width: size, height: thumbHeight }]}>
         <Text style={styles.exImgEmoji}>{getExerciseEmoji(exerciseName)}</Text>
       </View>
     );
@@ -273,11 +275,11 @@ function ExerciseImage({ exerciseName, exerciseDbImages = {} }) {
     <>
       <TouchableOpacity onPress={() => setEnlarged(true)}>
         {(clean === 'Weighted Pull Ups' || clean === 'Machine Shoulder Press') ? (
-          <View style={{ width: 120, height: 76, borderRadius: 8, overflow: 'hidden' }}>
-            <Image source={source} style={{ width: 120, height: 152 }} resizeMode="cover" />
+          <View style={{ width: size, height: thumbHeight, borderRadius: 8, overflow: 'hidden' }}>
+            <Image source={source} style={{ width: size, height: thumbHeight * 2 }} resizeMode="cover" />
           </View>
         ) : (
-          <Image source={source} style={styles.exImg} resizeMode="cover" />
+          <Image source={source} style={[styles.exImg, { width: size, height: thumbHeight }]} resizeMode="cover" />
         )}
       </TouchableOpacity>
       <Modal visible={enlarged} transparent animationType="fade">
@@ -297,82 +299,7 @@ function ExerciseImage({ exerciseName, exerciseDbImages = {} }) {
   );
 }
 
-function BarChart({ data }) {
-  if (!data || data.length === 0) {
-    return <Text style={styles.emptyChart}>No weight logged yet. Tap "+ Log Weight" to start tracking!</Text>;
-  }
-  const weights = data.map(d => parseFloat(d.weight));
-  const maxW = Math.max(...weights);
-  const minW = Math.min(...weights);
-  const range = maxW === minW ? 1 : maxW - minW;
-  const MAX_BAR = 120;
-  const MIN_BAR = 24;
 
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View style={styles.chart}>
-        {data.map((entry, i) => {
-          const barHeight = ((parseFloat(entry.weight) - minW) / range) * (MAX_BAR - MIN_BAR) + MIN_BAR;
-          const isLatest = i === data.length - 1;
-          return (
-            <View key={i} style={styles.barCol}>
-              <Text style={styles.barWeightLabel}>{entry.weight}</Text>
-              <View style={[styles.bar, { height: barHeight }, isLatest && styles.barLatest]} />
-              <Text style={styles.weekLabel}>Wk {entry.week}</Text>
-            </View>
-          );
-        })}
-      </View>
-    </ScrollView>
-  );
-}
-
-function LogModal({ visible, exercise, onSave, onCancel }) {
-  const [weightInput, setWeightInput] = useState('');
-
-  function handleSave() {
-    const w = parseFloat(weightInput);
-    if (isNaN(w) || w <= 0) {
-      Alert.alert('Invalid', 'Please enter a valid weight.');
-      return;
-    }
-    onSave(weightInput);
-    setWeightInput('');
-  }
-
-  function handleCancel() {
-    setWeightInput('');
-    onCancel();
-  }
-
-  return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Log Weight</Text>
-            <Text style={styles.modalSubtitle}>{exercise}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Weight (lbs or kg)"
-              placeholderTextColor={COLORS.muted}
-              keyboardType="decimal-pad"
-              value={weightInput}
-              onChangeText={setWeightInput}
-              autoFocus
-            />
-            <TouchableOpacity style={styles.button} onPress={handleSave}>
-              <Text style={styles.buttonText}>Save</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
-  );
-}
 
 function calculateTDEE(age, gender, heightFt, heightIn, weightLbs, activityLevel) {
   const totalInches = parseFloat(heightFt) * 12 + parseFloat(heightIn);
@@ -453,8 +380,7 @@ function Root() {
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [logs, setLogs] = useState({});
-  const [logModalVisible, setLogModalVisible] = useState(false);
-  const [loggingExercise, setLoggingExercise] = useState(null);
+
   const [nutritionForm, setNutritionForm] = useState({ age: '', gender: '', heightFt: '', heightIn: '', weight: '', activityLevel: '' });
   const [nutritionResult, setNutritionResult] = useState(null);
   const [stretchImgModal, setStretchImgModal] = useState(null);
@@ -464,6 +390,7 @@ function Root() {
   const [restTimerRunning, setRestTimerRunning] = useState(false);
   const [restingForExercise, setRestingForExercise] = useState(null);
   const [activeExerciseIndex, setActiveExerciseIndex] = useState(0);
+  const [sessionSets, setSessionSets] = useState([]);
   const [authForm, setAuthForm] = useState({ name: '', email: 'gbutton11@hotmail.com', password: 'Unicycle12!', gender: '' });
   const [authError, setAuthError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -659,24 +586,6 @@ function Root() {
     setScreen('nutritionResults');
   }
 
-  function openLogModal(exercise) {
-    setLoggingExercise(exercise);
-    setLogModalVisible(true);
-  }
-
-  function saveLog(weight) {
-    const key = logKey(selectedDay.day, loggingExercise);
-    const existing = logs[key] || [];
-    setLogs(prev => ({ ...prev, [key]: [...existing, { week: existing.length + 1, weight }] }));
-    setLogModalVisible(false);
-    const suggested = getRestSuggestion(loggingExercise);
-    setRestingForExercise(loggingExercise);
-    setRestTimerDuration(suggested);
-    setRestTimerRemaining(suggested);
-    setRestTimerRunning(true);
-    const idx = selectedDay?.exercises.indexOf(loggingExercise);
-    if (idx !== undefined && idx !== -1) setActiveExerciseIndex(idx);
-  }
 
   const question = QUESTIONS[step];
 
@@ -1312,7 +1221,22 @@ function Root() {
               return (
                 <TouchableOpacity
                   style={[styles.exerciseCard, isActive && { borderLeftWidth: 3, borderLeftColor: COLORS.accent }, isResting && { borderColor: '#4ade8044', borderWidth: 1 }]}
-                  onPress={() => { if (!isStretching && !isFoamRolling && !isRestDay) { setSelectedExercise(item); setScreen('progress'); } }}
+                  onPress={() => {
+                    if (!isStretching && !isFoamRolling && !isRestDay) {
+                      setSelectedExercise(item);
+                      const sr = parseSetsReps(item);
+                      const count = sr ? parseInt(sr.sets) : 3;
+                      const lastLogs = logs[logKey(selectedDay.day, item)] || [];
+                      const lastEntry = lastLogs.length > 0 ? lastLogs[lastLogs.length - 1] : null;
+                      const fallbackReps = lastEntry?.reps || (sr ? sr.reps.split('-')[0] : '');
+                      setSessionSets(Array.from({ length: count }, (_, idx) => ({
+                        weight: lastEntry?.sets?.[idx]?.weight || lastEntry?.weight || '',
+                        reps: lastEntry?.sets?.[idx]?.reps || fallbackReps,
+                        completed: false,
+                      })));
+                      setScreen('progress');
+                    }
+                  }}
                   activeOpacity={(isStretching || isFoamRolling || isRestDay) ? 1 : 0.75}
                 >
                   <View style={[styles.exerciseCardTop, (isStretching || isFoamRolling) && { justifyContent: 'center' }]}>
@@ -1398,12 +1322,6 @@ function Root() {
           </View>
         )}
 
-        <LogModal
-          visible={logModalVisible}
-          exercise={loggingExercise}
-          onSave={saveLog}
-          onCancel={() => setLogModalVisible(false)}
-        />
         <Modal visible={!!stretchImgModal} transparent animationType="fade">
           <TouchableOpacity style={styles.imgModalOverlay} onPress={() => setStretchImgModal(null)} activeOpacity={1}>
             <View style={styles.imgModalCard}>
@@ -1493,10 +1411,15 @@ function Root() {
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
           {/* Header */}
           <View style={styles.progressHeader}>
-            <ExerciseImage exerciseName={selectedExercise} exerciseDbImages={exerciseDbImages} />
+            <ExerciseImage exerciseName={selectedExercise} exerciseDbImages={exerciseDbImages} size={160} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.title2}>{selectedExercise.replace(/\s*\d+[×xX]\d+\s*/g, '').trim()}</Text>
-              <Text style={styles.subtitle2}>{selectedDay.day}</Text>
+              <Text style={styles.title2}>{cleanExerciseName(selectedExercise)}</Text>
+              {parseSetsReps(selectedExercise) && (
+                <View style={[styles.pillRow, { marginTop: 6 }]}>
+                  <View style={styles.pill}><Text style={styles.pillText}>{parseSetsReps(selectedExercise).sets} sets</Text></View>
+                  <View style={styles.pill}><Text style={styles.pillText}>{parseSetsReps(selectedExercise).reps} reps</Text></View>
+                </View>
+              )}
             </View>
           </View>
 
@@ -1522,24 +1445,169 @@ function Root() {
             </View>
           )}
 
-          {/* Graph */}
-          <View style={styles.chartContainer}>
-            <Text style={styles.chartTitle}>Weight Over Time</Text>
-            <BarChart data={data} />
+          {/* Log Sets */}
+          <View style={{ backgroundColor: '#1c1c3a55', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 16 }}>Log Sets</Text>
+                <Text style={{ color: COLORS.muted, fontSize: 11 }}>(last week's data)</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  const sr = parseSetsReps(selectedExercise);
+                  const count = sr ? parseInt(sr.sets) : 3;
+                  const lastLogs = logs[logKey(selectedDay.day, selectedExercise)] || [];
+                  const lastEntry = lastLogs.length > 0 ? lastLogs[lastLogs.length - 1] : null;
+                  const fallbackReps = lastEntry?.reps || (sr ? sr.reps.split('-')[0] : '');
+                  setSessionSets(Array.from({ length: count }, (_, idx) => ({
+                    weight: lastEntry?.sets?.[idx]?.weight || lastEntry?.weight || '',
+                    reps: lastEntry?.sets?.[idx]?.reps || fallbackReps,
+                    completed: false,
+                  })));
+                }}
+              >
+                <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '600' }}>Reset</Text>
+              </TouchableOpacity>
+            </View>
+            {sessionSets.map((set, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 6 }}>
+                <View style={{ backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 3, minWidth: 44, alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>SET {i + 1}</Text>
+                </View>
+                {set.completed ? (
+                  <>
+                    <Text style={{ color: COLORS.text, fontSize: 13, flex: 1 }}>{set.weight} lbs × {set.reps} reps</Text>
+                    <Text style={{ color: COLORS.muted, fontSize: 12, marginRight: 6 }}>{set.weight} / {set.reps}</Text>
+                    <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#4ade80', justifyContent: 'center', alignItems: 'center' }}>
+                      <Text style={{ color: '#000', fontSize: 13, fontWeight: 'bold' }}>✓</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0 }}>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 }}
+                        onPress={() => {
+                          const s = [...sessionSets];
+                          s[i] = { ...s[i], weight: String(Math.max(0, (parseFloat(s[i].weight) || 0) - 5)) };
+                          setSessionSets(s);
+                        }}
+                      >
+                        <Text style={{ color: COLORS.accent, fontSize: 10 }}>−5</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 }}
+                        onPress={() => {
+                          const s = [...sessionSets];
+                          s[i] = { ...s[i], weight: String((parseFloat(s[i].weight) || 0) + 5) };
+                          setSessionSets(s);
+                        }}
+                      >
+                        <Text style={{ color: '#4ade80', fontSize: 10 }}>+5</Text>
+                      </TouchableOpacity>
+                      <TextInput
+                        style={{ color: COLORS.text, fontSize: 13, backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 4, width: 46, textAlign: 'center' }}
+                        keyboardType="decimal-pad"
+                        value={set.weight}
+                        onChangeText={v => { const s = [...sessionSets]; s[i] = { ...s[i], weight: v }; setSessionSets(s); }}
+                        placeholder="lbs"
+                        placeholderTextColor={COLORS.muted}
+                      />
+                    </View>
+                    <Text style={{ color: COLORS.muted, fontSize: 10 }}>lbs ×</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0 }}>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 }}
+                        onPress={() => { const s = [...sessionSets]; s[i] = { ...s[i], reps: String(Math.max(0, (parseInt(s[i].reps) || 0) - 1)) }; setSessionSets(s); }}
+                      >
+                        <Text style={{ color: COLORS.accent, fontSize: 12 }}>−1</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 }}
+                        onPress={() => { const s = [...sessionSets]; s[i] = { ...s[i], reps: String((parseInt(s[i].reps) || 0) + 1) }; setSessionSets(s); }}
+                      >
+                        <Text style={{ color: '#4ade80', fontSize: 12 }}>+1</Text>
+                      </TouchableOpacity>
+                      <TextInput
+                        style={{ color: COLORS.text, fontSize: 13, backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 4, width: 38, textAlign: 'center' }}
+                        keyboardType="number-pad"
+                        value={set.reps}
+                        onChangeText={v => { const s = [...sessionSets]; s[i] = { ...s[i], reps: v }; setSessionSets(s); }}
+                        placeholder="reps"
+                        placeholderTextColor={COLORS.muted}
+                      />
+                    </View>
+                    <Text style={{ color: COLORS.muted, fontSize: 12 }}>Reps</Text>
+                    <TouchableOpacity
+                      style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: COLORS.muted, justifyContent: 'center', alignItems: 'center' }}
+                      onPress={() => {
+                        if (set.weight && set.reps) {
+                          const s = [...sessionSets];
+                          s[i] = { ...s[i], completed: true };
+                          if (i + 1 < s.length && !s[i + 1].completed && !s[i + 1].weight) {
+                            s[i + 1] = { ...s[i + 1], weight: set.weight };
+                          }
+                          setSessionSets(s);
+                          const suggested = getRestSuggestion(selectedExercise);
+                          setRestingForExercise(selectedExercise);
+                          setRestTimerDuration(suggested);
+                          setRestTimerRemaining(suggested);
+                          setRestTimerRunning(true);
+                        }
+                      }}
+                    />
+                  </>
+                )}
+              </View>
+            ))}
+            <TouchableOpacity
+              style={{ backgroundColor: COLORS.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 6 }}
+              onPress={() => {
+                const completed = sessionSets.filter(s => s.completed);
+                if (completed.length === 0) return;
+                const maxWeight = Math.max(...completed.map(s => parseFloat(s.weight) || 0));
+                const bestSet = completed.find(s => parseFloat(s.weight) === maxWeight) || completed[completed.length - 1];
+                const key = logKey(selectedDay.day, selectedExercise);
+                const existing = logs[key] || [];
+                const allSets = sessionSets.map((s, idx) => s.completed ? { weight: s.weight, reps: s.reps } : (existing[existing.length - 1]?.sets?.[idx] || { weight: '', reps: '' }));
+                setLogs(prev => ({ ...prev, [key]: [...existing, { week: existing.length + 1, weight: String(maxWeight), reps: bestSet.reps, sets: allSets }] }));
+                const sr = parseSetsReps(selectedExercise);
+                const count = sr ? parseInt(sr.sets) : 3;
+                setSessionSets(Array.from({ length: count }, (_, idx) => ({ weight: allSets[idx]?.weight || String(maxWeight), reps: allSets[idx]?.reps || bestSet.reps, completed: false })));
+              }}
+            >
+              <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 15 }}>Save Sets</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Table */}
+          {/* Log History */}
           {data.length > 0 ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={[styles.sectionLabel, { marginBottom: 0 }]}>Log History</Text>
+                <TouchableOpacity
+                  onPress={() => Alert.alert(
+                    'Clear Log History',
+                    `Are you sure you want to clear all log history for ${cleanExerciseName(selectedExercise)}? This cannot be undone.`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Clear', style: 'destructive', onPress: () => {
+                        setLogs(prev => ({ ...prev, [logKey(selectedDay.day, selectedExercise)]: [] }));
+                        setSessionSets(s => s.map(set => ({ ...set, weight: '', completed: false })));
+                      }},
+                    ]
+                  )}
+                >
+                  <Text style={{ color: COLORS.accent, fontSize: 13, fontWeight: '600' }}>Clear</Text>
+                </TouchableOpacity>
+              </View>
             <View style={styles.tableContainer}>
-              <Text style={styles.sectionLabel}>Log History</Text>
-              {/* Table Header */}
               <View style={[styles.tableRow, styles.tableHeaderRow]}>
                 <Text style={[styles.tableCell, styles.tableHeaderCell, styles.weekCol]}>Week</Text>
                 <Text style={[styles.tableCell, styles.tableHeaderCell, styles.weightCol]}>Weight</Text>
                 <Text style={[styles.tableCell, styles.tableHeaderCell, styles.changeCol]}>Change</Text>
                 <Text style={[styles.tableCell, styles.tableHeaderCell, styles.dateCol]}>Entry #</Text>
               </View>
-              {/* Table Rows */}
               {data.map((entry, i) => {
                 const prev = i > 0 ? parseFloat(data[i - 1].weight) : null;
                 const curr = parseFloat(entry.weight);
@@ -1549,11 +1617,7 @@ function Root() {
                   <View key={i} style={[styles.tableRow, i % 2 === 0 && styles.tableRowAlt]}>
                     <Text style={[styles.tableCell, styles.weekCol]}>Week {entry.week}</Text>
                     <Text style={[styles.tableCell, styles.weightCol, styles.weightValue]}>{entry.weight}</Text>
-                    <Text style={[
-                      styles.tableCell,
-                      styles.changeCol,
-                      diff !== null && { color: diffNum >= 0 ? COLORS.success : COLORS.accent },
-                    ]}>
+                    <Text style={[styles.tableCell, styles.changeCol, diff !== null && { color: diffNum >= 0 ? COLORS.success : COLORS.accent }]}>
                       {diff === null ? '—' : (diffNum >= 0 ? `+${diff}` : diff)}
                     </Text>
                     <Text style={[styles.tableCell, styles.dateCol, styles.entryNum]}>#{i + 1}</Text>
@@ -1561,21 +1625,10 @@ function Root() {
                 );
               })}
             </View>
-          ) : (
-            <Text style={styles.emptyChart}>No entries yet. Tap "+ Log This Week" to get started!</Text>
-          )}
+            </>
+          ) : null}
         </ScrollView>
 
-        <TouchableOpacity style={[styles.logBtn, styles.floatBtn]} onPress={() => openLogModal(selectedExercise)}>
-          <Text style={styles.logBtnText}>+ Log This Week</Text>
-        </TouchableOpacity>
-
-        <LogModal
-          visible={logModalVisible}
-          exercise={loggingExercise}
-          onSave={saveLog}
-          onCancel={() => setLogModalVisible(false)}
-        />
       </View>
     );
   }

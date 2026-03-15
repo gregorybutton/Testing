@@ -319,6 +319,7 @@ function calculateTDEE(age, gender, heightFt, heightIn, weightLbs, activityLevel
   return Math.round(bmr * multipliers[activityLevel]);
 }
 
+
 function formatTime(s) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 }
@@ -395,6 +396,9 @@ function Root() {
   const [authError, setAuthError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [exerciseDbImages, setExerciseDbImages] = useState({});
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [currentWeek, setCurrentWeek] = useState(1);
+  const TOTAL_WEEKS = 8;
 
   useEffect(() => {
     Promise.all([
@@ -591,9 +595,23 @@ function Root() {
 
   function LogoutBtn() {
     return (
-      <TouchableOpacity onPress={handleLogout} style={[styles.backBtn, { alignSelf: 'flex-end' }]}>
-        <Text style={[styles.backText, { color: '#ff6b6b' }]}>Log Out</Text>
-      </TouchableOpacity>
+      <>
+        <TouchableOpacity onPress={() => setMenuVisible(true)} style={{ position: 'absolute', top: 8, right: 0, padding: 20, zIndex: 10 }}>
+          <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '700', letterSpacing: 2 }}>⋯</Text>
+        </TouchableOpacity>
+        <Modal visible={menuVisible} transparent animationType="fade">
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+            <View style={{ position: 'absolute', top: 10, right: 8, backgroundColor: '#1c1c3a', borderRadius: 12, borderWidth: 1, borderColor: '#ffffff15', overflow: 'hidden', minWidth: 160 }}>
+              <TouchableOpacity
+                onPress={() => { setMenuVisible(false); handleLogout(); }}
+                style={{ paddingVertical: 14, paddingHorizontal: 18 }}
+              >
+                <Text style={{ color: '#ff6b6b', fontSize: 15, fontWeight: '600' }}>Log Out</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </>
     );
   }
 
@@ -738,18 +756,55 @@ function Root() {
     );
   }
 
+  // ── Week Tracker Card (shared) ───────────────────────────
+  function WeekTrackerCard() {
+    const workoutDays = (plan || []).filter(d => !d.day.includes('Rest'));
+    const completedDays = workoutDays.filter(d =>
+      d.exercises.some(e => (logs[logKey(d.day, e)] || []).length > 0)
+    ).length;
+    const progress = workoutDays.length > 0 ? completedDays / workoutDays.length : 0;
+    const programProgress = Math.round(((currentWeek - 1) / TOTAL_WEEKS + progress / TOTAL_WEEKS) * 100);
+    return (
+      <View style={{ backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 14, marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+            <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 18 }}>Week {currentWeek}</Text>
+            <Text style={{ color: COLORS.muted, fontSize: 14 }}>of {TOTAL_WEEKS}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity onPress={() => setCurrentWeek(w => Math.max(1, w - 1))} style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek > 1 ? 1 : 0.35 }}>
+              <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>‹</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setCurrentWeek(w => Math.min(TOTAL_WEEKS, w + 1))} style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek < TOTAL_WEEKS ? 1 : 0.35 }}>
+              <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>›</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View style={{ height: 6, backgroundColor: '#2a2a4a', borderRadius: 3, marginBottom: 8 }}>
+          <View style={{ height: 6, backgroundColor: '#4a90e2', borderRadius: 3, width: `${programProgress}%` }} />
+        </View>
+        <Text style={{ color: COLORS.muted, fontSize: 13, marginBottom: 2 }}>
+          Program Progress: <Text style={{ color: COLORS.text, fontWeight: '600' }}>{programProgress}%</Text>
+        </Text>
+        <Text style={{ color: COLORS.muted, fontSize: 13 }}>
+          <Text style={{ color: COLORS.text, fontWeight: '600' }}>{completedDays} / {workoutDays.length}</Text> Workouts Completed
+        </Text>
+      </View>
+    );
+  }
+
   // ── Quiz Screen ──────────────────────────────────────────
   if (screen === 'quiz') {
     return (
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={[styles.container, { paddingTop: 70 }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           {step > 0 ? (
             <TouchableOpacity onPress={() => setStep(step - 1)} style={styles.backBtn}>
-              <Text style={styles.backText}>‹ Back</Text>
+              <Text style={styles.backText}>‹</Text>
             </TouchableOpacity>
           ) : <View />}
-          <LogoutBtn />
         </View>
+        <LogoutBtn />
         <Text style={styles.title}>Workout Tracker</Text>
         <View style={styles.progress}>
           {QUESTIONS.map((_, i) => (
@@ -805,12 +860,12 @@ function Root() {
     const allFilled = nutritionForm.age && nutritionForm.gender && nutritionForm.heightFt && nutritionForm.weight && nutritionForm.activityLevel;
     return (
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <LogoutBtn />
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <TouchableOpacity onPress={() => { setStep(0); setScreen('quiz'); }} style={styles.backBtn}>
-              <Text style={styles.backText}>‹ Back</Text>
+              <Text style={styles.backText}>‹</Text>
             </TouchableOpacity>
-            <LogoutBtn />
           </View>
           <Text style={styles.title}>Nutrition Plan</Text>
           <Text style={styles.subtitle}>Tell us about yourself</Text>
@@ -891,12 +946,12 @@ function Root() {
 
     return (
       <View style={styles.container}>
+        <LogoutBtn />
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <TouchableOpacity onPress={() => setScreen('nutrition')} style={styles.backBtn}>
-              <Text style={styles.backText}>‹ Back</Text>
+              <Text style={styles.backText}>‹</Text>
             </TouchableOpacity>
-            <LogoutBtn />
           </View>
           <Text style={styles.title}>Your Nutrition Plan</Text>
           <Text style={styles.subtitle}>{answers.name} · {nutritionForm.weight} lbs · {nutritionForm.activityLevel}</Text>
@@ -971,7 +1026,7 @@ function Root() {
       <View style={[styles.container, { alignItems: 'center' }]}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 8 }}>
           <TouchableOpacity onPress={() => { setRestTimerRunning(false); setScreen('day'); }} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>‹</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.title}>Rest Timer</Text>
@@ -1036,16 +1091,16 @@ function Root() {
   // ── Plan Overview Screen ─────────────────────────────────
   if (screen === 'plan') {
     return (
-      <View style={styles.container}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <TouchableOpacity onPress={restart} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.backBtn}>
-            <Text style={[styles.backText, { color: '#ff6b6b' }]}>Log Out</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.container, { paddingTop: 70 }]}>
+        <LogoutBtn />
+        <TouchableOpacity onPress={restart} style={[styles.backBtn, { position: 'absolute', top: 20, left: 16, zIndex: 10 }]}>
+          <Text style={styles.backText}>‹</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>Your Workout Plan</Text>
+
+        {/* Week Tracker Card */}
+        <WeekTrackerCard />
+
         <FlatList
           data={plan}
           keyExtractor={(_, i) => i.toString()}
@@ -1092,39 +1147,55 @@ function Root() {
     }
 
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: 70 }]}>
         {/* Top nav row */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <TouchableOpacity onPress={() => setScreen('plan')} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back to Plan</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.backBtn}>
-            <Text style={[styles.backText, { color: '#ff6b6b' }]}>Log Out</Text>
-          </TouchableOpacity>
-        </View>
+        <LogoutBtn />
+        <TouchableOpacity onPress={() => setScreen('plan')} style={[styles.backBtn, { position: 'absolute', top: 20, left: 16, zIndex: 10 }]}>
+          <Text style={styles.backText}>‹</Text>
+        </TouchableOpacity>
 
-        {/* Title row with progress ring */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={[styles.title, { textAlign: 'left', marginBottom: 4 }]}>{selectedDay.day}</Text>
-            {!isRestDay && (
-              <Text style={{ color: COLORS.muted, fontSize: 13 }}>
-                ⏱ {totalExercises} exercises  •  ~{estimatedMinutes} min
+        {/* Title */}
+        <Text style={[styles.title, { marginBottom: 4 }]}>{selectedDay.day}</Text>
+        {!isRestDay && (
+          <Text style={{ color: COLORS.muted, fontSize: 13, textAlign: 'center', marginBottom: 10 }}>
+            ⏱ {totalExercises} exercises  •  ~{estimatedMinutes} min
+          </Text>
+        )}
+
+        {/* Week Tracker + Progress Ring row */}
+        {!isRestDay && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <View style={{ flex: 1, backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                  <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 15 }}>Week {currentWeek}</Text>
+                  <Text style={{ color: COLORS.muted, fontSize: 12 }}>of {TOTAL_WEEKS}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <TouchableOpacity onPress={() => setCurrentWeek(w => Math.max(1, w - 1))} style={{ width: 24, height: 24, borderRadius: 5, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek > 1 ? 1 : 0.35 }}>
+                    <Text style={{ color: COLORS.text, fontSize: 15, fontWeight: '700', lineHeight: 19 }}>‹</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setCurrentWeek(w => Math.min(TOTAL_WEEKS, w + 1))} style={{ width: 24, height: 24, borderRadius: 5, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek < TOTAL_WEEKS ? 1 : 0.35 }}>
+                    <Text style={{ color: COLORS.text, fontSize: 15, fontWeight: '700', lineHeight: 19 }}>›</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={{ height: 4, backgroundColor: '#2a2a4a', borderRadius: 2, marginBottom: 6 }}>
+                <View style={{ height: 4, backgroundColor: '#4a90e2', borderRadius: 2, width: `${Math.round(((currentWeek - 1) / TOTAL_WEEKS + (workoutExercises.filter(e => (logs[logKey(selectedDay.day, e)] || []).length > 0).length / Math.max(workoutExercises.length, 1)) / TOTAL_WEEKS) * 100)}%` }} />
+              </View>
+              <Text style={{ color: COLORS.muted, fontSize: 11 }}>
+                <Text style={{ color: COLORS.text, fontWeight: '600' }}>{loggedCount} / {totalExercises}</Text> Exercises Logged
               </Text>
-            )}
-          </View>
-          {!isRestDay && (
-            <View style={{ alignItems: 'center', justifyContent: 'center', width: 76, height: 76 }}>
-              <CircularProgress progress={progressFraction} size={76} strokeWidth={6} />
+            </View>
+            <View style={{ alignItems: 'center', justifyContent: 'center', width: 70, height: 70 }}>
+              <CircularProgress progress={progressFraction} size={70} strokeWidth={6} />
               <View style={{ position: 'absolute', alignItems: 'center' }}>
-                <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: 'bold' }}>
-                  {Math.round(progressFraction * 100)}%
-                </Text>
+                <Text style={{ color: COLORS.text, fontSize: 12, fontWeight: 'bold' }}>{Math.round(progressFraction * 100)}%</Text>
                 <Text style={{ color: COLORS.muted, fontSize: 9 }}>Complete</Text>
               </View>
             </View>
-          )}
-        </View>
+          </View>
+        )}
 
         {/* Inline rest banner — always visible on workout days */}
         {!isRestDay && (() => {
@@ -1224,6 +1295,7 @@ function Root() {
                   onPress={() => {
                     if (!isStretching && !isFoamRolling && !isRestDay) {
                       setSelectedExercise(item);
+                      setActiveExerciseIndex(index);
                       const sr = parseSetsReps(item);
                       const count = sr ? parseInt(sr.sets) : 3;
                       const lastLogs = logs[logKey(selectedDay.day, item)] || [];
@@ -1346,11 +1418,11 @@ function Root() {
 
     return (
       <View style={styles.container}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <LogoutBtn />
+        <View style={{ flexDirection: 'row' }}>
           <TouchableOpacity onPress={() => setScreen('day')} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back to {selectedDay.day.split(' – ')[0]}</Text>
+            <Text style={styles.backText}>‹</Text>
           </TouchableOpacity>
-          <LogoutBtn />
         </View>
 
         {/* Rest timer banner on progress screen */}
@@ -1450,7 +1522,7 @@ function Root() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                 <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 16 }}>Log Sets</Text>
-                <Text style={{ color: COLORS.muted, fontSize: 11 }}>(last week's data)</Text>
+                {data.length > 0 && <Text style={{ color: COLORS.muted, fontSize: 11 }}>(last week's data)</Text>}
               </View>
               <TouchableOpacity
                 onPress={() => {
@@ -1601,30 +1673,65 @@ function Root() {
                   <Text style={{ color: COLORS.accent, fontSize: 13, fontWeight: '600' }}>Clear</Text>
                 </TouchableOpacity>
               </View>
-            <View style={styles.tableContainer}>
-              <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                <Text style={[styles.tableCell, styles.tableHeaderCell, styles.weekCol]}>Week</Text>
-                <Text style={[styles.tableCell, styles.tableHeaderCell, styles.weightCol]}>Weight</Text>
-                <Text style={[styles.tableCell, styles.tableHeaderCell, styles.changeCol]}>Change</Text>
-                <Text style={[styles.tableCell, styles.tableHeaderCell, styles.dateCol]}>Entry #</Text>
-              </View>
-              {data.map((entry, i) => {
-                const prev = i > 0 ? parseFloat(data[i - 1].weight) : null;
-                const curr = parseFloat(entry.weight);
-                const diff = prev !== null ? (curr - prev).toFixed(1) : null;
-                const diffNum = diff !== null ? parseFloat(diff) : null;
-                return (
-                  <View key={i} style={[styles.tableRow, i % 2 === 0 && styles.tableRowAlt]}>
-                    <Text style={[styles.tableCell, styles.weekCol]}>Week {entry.week}</Text>
-                    <Text style={[styles.tableCell, styles.weightCol, styles.weightValue]}>{entry.weight}</Text>
-                    <Text style={[styles.tableCell, styles.changeCol, diff !== null && { color: diffNum >= 0 ? COLORS.success : COLORS.accent }]}>
-                      {diff === null ? '—' : (diffNum >= 0 ? `+${diff}` : diff)}
-                    </Text>
-                    <Text style={[styles.tableCell, styles.dateCol, styles.entryNum]}>#{i + 1}</Text>
+            {data.slice().reverse().map((entry, revIdx) => {
+              const i = data.length - 1 - revIdx;
+              const sets = entry.sets || [];
+              const topSet = sets.length > 0 ? sets.reduce((best, s) => (parseFloat(s.weight) || 0) >= (parseFloat(best.weight) || 0) ? s : best, sets[0]) : { weight: entry.weight, reps: entry.reps };
+              const volume = sets.reduce((sum, s) => sum + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0);
+              const prevEntry = i > 0 ? data[i - 1] : null;
+              const prevVolume = prevEntry?.sets ? prevEntry.sets.reduce((sum, s) => sum + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0) : 0;
+              const volumeChange = prevEntry && volume > 0 ? volume - prevVolume : null;
+              const allVolumes = data.slice(0, i + 1).map(e => e.sets ? e.sets.reduce((sum, s) => sum + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0) : 0);
+              const isPR = volume > 0 && volume === Math.max(...allVolumes);
+              const isFirst = i === 0;
+              return (
+                <View key={i} style={{ backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 14, marginBottom: 10 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                        <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 16 }}>Week {entry.week}</Text>
+                        <Text style={{ color: COLORS.muted, fontSize: 12 }}>{cleanExerciseName(selectedExercise)}</Text>
+                      </View>
+                      {isPR && !isFirst && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                          <Text style={{ fontSize: 13 }}>🏆</Text>
+                          <Text style={{ color: '#fbbf24', fontSize: 12, fontWeight: '700' }}>New PR</Text>
+                        </View>
+                      )}
+                      {isFirst && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                          <Text style={{ fontSize: 13 }}>🏆</Text>
+                          <Text style={{ color: '#fbbf24', fontSize: 12, fontWeight: '700' }}>First Entry</Text>
+                        </View>
+                      )}
+                      {topSet && sets.length > 0 && (
+                        <Text style={{ color: COLORS.muted, fontSize: 13, marginBottom: 2 }}>
+                          Top Set <Text style={{ color: COLORS.text, fontWeight: 'bold' }}>{topSet.weight} × {topSet.reps}</Text> lbs
+                        </Text>
+                      )}
+                      {volume > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <Text style={{ color: COLORS.muted, fontSize: 13 }}>
+                            Volume <Text style={{ color: COLORS.text, fontWeight: 'bold' }}>{volume.toLocaleString()}</Text> lbs
+                          </Text>
+                          {volumeChange !== null && (
+                            <Text style={{ color: volumeChange >= 0 ? '#4ade80' : COLORS.accent, fontSize: 13, fontWeight: '700' }}>
+                              {volumeChange >= 0 ? '+' : ''}{volumeChange} lb
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                      {sets.length > 0 && (
+                        <Text style={{ color: COLORS.muted, fontSize: 11 }}>
+                          {sets.map(s => `${s.weight}×${s.reps}`).join(' · ')}
+                        </Text>
+                      )}
+                    </View>
+
                   </View>
-                );
-              })}
-            </View>
+                </View>
+              );
+            })}
             </>
           ) : null}
         </ScrollView>
@@ -1638,7 +1745,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'transparent',
-    paddingTop: 60,
+    paddingTop: 20,
     paddingHorizontal: 16,
   },
   title: {
@@ -1721,8 +1828,8 @@ const styles = StyleSheet.create({
   dayTitle: { color: COLORS.accent, fontWeight: 'bold', fontSize: 15, flex: 1 },
   chevron: { color: COLORS.muted, fontSize: 24 },
   exerciseCount: { color: COLORS.muted, fontSize: 13, marginTop: 4 },
-  backBtn: { marginBottom: 12 },
-  backText: { color: COLORS.accent, fontSize: 15 },
+  backBtn: { marginBottom: 12, paddingRight: 80, paddingVertical: 16 },
+  backText: { color: COLORS.text, fontSize: 44, fontWeight: '700', lineHeight: 48 },
   exerciseCard: {
     backgroundColor: '#1c1c3a55',
     borderWidth: 1,

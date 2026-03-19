@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { db } from './firebaseConfig';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Alert,
@@ -499,48 +501,39 @@ function Root() {
   const [stretchEachSide, setStretchEachSide] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      AsyncStorage.getItem('logs'),
-      AsyncStorage.getItem('user'),
-      AsyncStorage.getItem('restTimerEnabled'),
-      AsyncStorage.getItem('completedWorkouts'),
-    ]).then(([logsVal, userVal, restTimerVal, completedVal]) => {
-      const parsedLogs = logsVal ? JSON.parse(logsVal) : {};
-      if (logsVal) setLogs(parsedLogs);
-      if (completedVal) {
-        const parsed = JSON.parse(completedVal);
-        // Remove stale entries where no exercises are actually logged for that day+week
-        const validated = {};
-        for (const key of Object.keys(parsed)) {
-          const lastPipe = key.lastIndexOf('|');
-          const dayTitle = key.slice(0, lastPipe);
-          const week = parseInt(key.slice(lastPipe + 1));
-          const hasLogs = Object.keys(parsedLogs).some(lk => {
-            if (!lk.startsWith(dayTitle + '|')) return false;
-            return (parsedLogs[lk] || []).some(en =>
-              en.programWeek !== undefined ? en.programWeek === week : en.week === week
-            );
-          });
-          if (hasLogs) validated[key] = true;
+    AsyncStorage.getItem('user').then(async userVal => {
+      if (!userVal) { setScreen('register'); return; }
+      const savedUser = JSON.parse(userVal);
+      setUser(savedUser);
+      setAnswers({ name: savedUser.name });
+      try {
+        const snap = await getDoc(doc(db, 'users', savedUser.email));
+        if (snap.exists()) {
+          const data = snap.data();
+          const parsedLogs = data.logs || {};
+          setLogs(parsedLogs);
+          const completedRaw = data.completedWorkouts || {};
+          const validated = {};
+          for (const key of Object.keys(completedRaw)) {
+            const lastPipe = key.lastIndexOf('|');
+            const dayTitle = key.slice(0, lastPipe);
+            const week = parseInt(key.slice(lastPipe + 1));
+            const hasLogs = Object.keys(parsedLogs).some(lk => {
+              if (!lk.startsWith(dayTitle + '|')) return false;
+              return (parsedLogs[lk] || []).some(en =>
+                en.programWeek !== undefined ? en.programWeek === week : en.week === week
+              );
+            });
+            if (hasLogs) validated[key] = true;
+          }
+          setCompletedWorkouts(validated);
+          if (data.restTimerEnabled !== undefined) setRestTimerEnabled(data.restTimerEnabled);
         }
-        setCompletedWorkouts(validated);
-        AsyncStorage.setItem('completedWorkouts', JSON.stringify(validated));
-      }
-      if (restTimerVal !== null) setRestTimerEnabled(JSON.parse(restTimerVal));
-      if (userVal) {
-        const savedUser = JSON.parse(userVal);
-        setUser(savedUser);
-        setAnswers({ name: savedUser.name });
-        setScreen('login');
-      } else {
-        setScreen('register');
-      }
+      } catch (e) {}
+      setScreen('login');
     });
   }, []);
 
-  useEffect(() => {
-    AsyncStorage.setItem('logs', JSON.stringify(logs));
-  }, [logs]);
 
   useEffect(() => {
     if (!restTimerRunning) return;
@@ -650,17 +643,15 @@ function Root() {
       setAuthError('Password must be at least 6 characters.');
       return;
     }
-    AsyncStorage.getItem('users').then(val => {
-      const users = val ? JSON.parse(val) : [];
-      if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
+    const userRef = doc(db, 'users', email);
+    getDoc(userRef).then(snap => {
+      if (snap.exists()) {
         setAuthError('An account with this email already exists.');
         return;
       }
       const newUser = { name, email, password, gender };
-      const updated = [...users, newUser];
-      AsyncStorage.setItem('users', JSON.stringify(updated));
+      setDoc(userRef, { ...newUser, restTimerEnabled: true, logs: {}, completedWorkouts: {} });
       AsyncStorage.setItem('user', JSON.stringify(newUser));
-      AsyncStorage.setItem('restTimerEnabled', 'true');
       setUser(newUser);
       setRestTimerEnabled(true);
       setAnswers({ name });
@@ -675,27 +666,13 @@ function Root() {
       setAuthError('Please enter your email and password.');
       return;
     }
-    AsyncStorage.getItem('users').then(val => {
-      const users = val ? JSON.parse(val) : [];
-      // Fall back to legacy single-user key if no users array yet
-      if (users.length === 0) {
-        AsyncStorage.getItem('user').then(legacy => {
-          if (!legacy) { setAuthError('No account found. Please register.'); return; }
-          const saved = JSON.parse(legacy);
-          if (saved.email !== email || saved.password !== password) { setAuthError('Incorrect email or password.'); return; }
-          // Migrate to users array
-          AsyncStorage.setItem('users', JSON.stringify([saved]));
-          setUser(saved);
-          setAnswers({ name: saved.name });
-          setAuthError('');
-          setScreen('quiz');
-        });
-        return;
-      }
-      const found = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-      if (!found) { setAuthError('Incorrect email or password.'); return; }
-      AsyncStorage.setItem('user', JSON.stringify(found));
-      setUser(found);
+    getDoc(doc(db, 'users', email)).then(snap => {
+      if (!snap.exists()) { setAuthError('No account found. Please register.'); return; }
+      const found = snap.data();
+      if (found.password !== password) { setAuthError('Incorrect email or password.'); return; }
+      const userInfo = { name: found.name, email: found.email, password: found.password, gender: found.gender };
+      AsyncStorage.setItem('user', JSON.stringify(userInfo));
+      setUser(userInfo);
       setAnswers({ name: found.name });
       setAuthError('');
       setScreen('quiz');
@@ -797,12 +774,7 @@ function Root() {
 
     if (key === 'goal' && (value === 'Building Muscle - Men' || value === 'Building Muscle - Women')) {
       setPlan(WORKOUT_PLANS[value]);
-      AsyncStorage.getItem('user').then(val => {
-        if (val) {
-          const saved = JSON.parse(val);
-          AsyncStorage.setItem('user', JSON.stringify({ ...saved, goal: value }));
-        }
-      });
+      if (user) updateDoc(doc(db, 'users', user.email), { goal: value });
       setScreen('plan');
       return;
     }
@@ -1439,7 +1411,7 @@ function Root() {
                 value={restTimerEnabled}
                 onValueChange={v => {
                   setRestTimerEnabled(v);
-                  AsyncStorage.setItem('restTimerEnabled', JSON.stringify(v));
+                  if (user) updateDoc(doc(db, 'users', user.email), { restTimerEnabled: v });
                   if (!v) {
                     setRestTimerRunning(false);
                     setRestTimerRemaining(0);
@@ -1477,7 +1449,7 @@ function Root() {
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Reset Everything', style: 'destructive', onPress: () => {
                   setLogs({});
-                  AsyncStorage.removeItem('logs');
+                  if (user) updateDoc(doc(db, 'users', user.email), { logs: {}, completedWorkouts: {} });
                 }},
               ]
             )}
@@ -1607,7 +1579,7 @@ function Root() {
               (logs[logKey(item.day, e)] || []).some(en => en.programWeek === currentWeek)
             );
             return (
-              <TouchableOpacity style={[styles.card, { position: 'relative' }]} onPress={() => { setSelectedDay(item); setActiveExerciseIndex(0); setRestTimerRunning(false); setRestingForExercise(null); setScreen('day'); }}>
+              <TouchableOpacity style={[styles.card, { position: 'relative', backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14 }]} onPress={() => { setSelectedDay(item); setActiveExerciseIndex(0); setRestTimerRunning(false); setRestingForExercise(null); setScreen('day'); }}>
                 {isCompleted && (
                   <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, width: 22, height: 22, borderRadius: 11, backgroundColor: '#4ade80', alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ color: '#000', fontSize: 13, fontWeight: '800', lineHeight: 16 }}>✓</Text>
@@ -2016,7 +1988,7 @@ function Root() {
                   if (done) { setShowDayComplete(true); return; }
                   const updated = { ...completedWorkouts, [wKey]: true };
                   setCompletedWorkouts(updated);
-                  AsyncStorage.setItem('completedWorkouts', JSON.stringify(updated));
+                  if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updated });
                   setShowCompleteButton(false);
                   setShowDayComplete(true);
                 }}
@@ -2371,6 +2343,7 @@ function Root() {
                 const newEntry = { week: existing.length + 1, programWeek: currentWeek, weight: String(maxWeight), reps: bestSet.reps, sets: allSets };
                 const updatedLogs = { ...logs, [key]: [...existing, newEntry] };
                 setLogs(updatedLogs);
+                if (user) updateDoc(doc(db, 'users', user.email), { logs: updatedLogs });
                 const dayExs = (selectedDay?.exercises || []).filter(e =>
                   !e.includes('Full Body Stretching') && !e.includes('Full Body Foam Rolling') && !e.includes('Incline Walk')
                 );
@@ -2407,7 +2380,7 @@ function Root() {
                       { text: 'Clear', style: 'destructive', onPress: () => {
                         const updatedLogs = { ...logs, [logKey(selectedDay.day, selectedExercise)]: [] };
                         setLogs(updatedLogs);
-                        AsyncStorage.setItem('logs', JSON.stringify(updatedLogs));
+                        if (user) updateDoc(doc(db, 'users', user.email), { logs: updatedLogs });
                         setSessionSets(s => s.map(set => ({ ...set, weight: '', completed: false })));
                         setShowCompleteButton(false);
                         // Un-complete the workout so the button can reappear after re-logging
@@ -2415,7 +2388,7 @@ function Root() {
                         const updatedCompleted = { ...completedWorkouts };
                         delete updatedCompleted[wKey];
                         setCompletedWorkouts(updatedCompleted);
-                        AsyncStorage.setItem('completedWorkouts', JSON.stringify(updatedCompleted));
+                        if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updatedCompleted });
                       }},
                     ]
                   )}
@@ -2670,7 +2643,7 @@ function Root() {
                     });
                     const updatedLogs = { ...logs, [key]: updated };
                     setLogs(updatedLogs);
-                    AsyncStorage.setItem('logs', JSON.stringify(updatedLogs));
+                    if (user) updateDoc(doc(db, 'users', user.email), { logs: updatedLogs });
                     setEditingEntryIndex(null);
                   }}
                   style={{ flex: 1, backgroundColor: '#4ade80', borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}
@@ -2694,7 +2667,7 @@ function Root() {
                   if (done) { setShowDayComplete(true); return; }
                   const updated = { ...completedWorkouts, [key]: true };
                   setCompletedWorkouts(updated);
-                  AsyncStorage.setItem('completedWorkouts', JSON.stringify(updated));
+                  if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updated });
                   setShowCompleteButton(false);
                   setShowDayComplete(true);
                 }}

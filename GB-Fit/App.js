@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Picker } from '@react-native-picker/picker';
 import {
   Alert,
+  Animated,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -23,16 +24,35 @@ import {
 } from 'react-native';
 
 const COLORS = {
-  bg: '#0a0a0a',
-  card: '#1c1c3a',
+  bg: '#080810',
+  card: '#252552',
+  surface: '#1c1c42',
+  deep: '#0d0d20',
   accent: '#e94560',
   text: '#ffffff',
-  muted: '#8888aa',
-  input: '#23234a',
-  success: '#4caf50',
+  muted: '#6668a0',
+  input: '#20204a',
+  success: '#4ade80',
 };
 
 function buildPlan(days) { return days; }
+
+const PLATE_COLORS = { 45: '#c0392b', 35: '#2471a3', 25: '#d4ac0d', 10: '#1e8449', 5: '#717d7e', 2.5: '#aab7b8' };
+const PLATE_H = { 45: 76, 35: 65, 25: 54, 10: 42, 5: 33, 2.5: 24 };
+const PLATE_W = { 45: 15, 35: 13, 25: 11, 10: 9, 5: 7, 2.5: 6 };
+const PLATE_OPTIONS = [45, 25, 10, 5, 2.5];
+
+function weightToPlates(totalWeight) {
+  const bar = 45;
+  if (totalWeight < bar) return [];
+  let rem = Math.round(((totalWeight - bar) / 2) * 10) / 10;
+  const result = [];
+  for (const p of PLATE_OPTIONS) {
+    while (rem >= p - 0.01) { result.push(p); rem = Math.round((rem - p) * 10) / 10; }
+  }
+  return result;
+}
+function platesToWeight(plates) { return 45 + 2 * plates.reduce((s, p) => s + p, 0); }
 
 
 const WORKOUT_PLANS = {
@@ -464,6 +484,160 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// ── Shared helpers ────────────────────────────────────────────
+function logKeyGlobal(dayTitle, exercise) {
+  return `${dayTitle}|${exercise}`;
+}
+
+// Wraps any pressable with a spring scale-down on press
+function AnimatedPress({ onPress, style, scaleDown = 0.96, children, ...rest }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const pressIn = () => Animated.spring(scale, { toValue: scaleDown, useNativeDriver: true, speed: 100, bounciness: 0 }).start();
+  const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 70, bounciness: 8 }).start();
+  return (
+    <TouchableOpacity activeOpacity={1} onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} {...rest}>
+      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+// Progress bar that animates its fill from 0 → target on mount/change
+function AnimatedProgressBar({ progress, color = '#4a90e2', trackColor = '#2a2a4a', height = 8, glowColor, style }) {
+  const widthAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(widthAnim, {
+      toValue: Math.min(Math.max(progress, 0), 1),
+      duration: 900,
+      useNativeDriver: false,
+    }).start();
+  }, [progress]);
+  return (
+    <View style={[{ height, backgroundColor: trackColor, borderRadius: height / 2, overflow: 'hidden' }, style]}>
+      <Animated.View style={{
+        height,
+        backgroundColor: color,
+        borderRadius: height / 2,
+        width: widthAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+        shadowColor: glowColor || color,
+        shadowOpacity: 0.5,
+        shadowRadius: 4,
+      }} />
+    </View>
+  );
+}
+
+// Plan-screen day card with spring scale on press
+function DayCard({ item, currentWeek, logs, completedWorkouts, onPress }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const pressIn = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 120, bounciness: 0 }).start();
+  const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 80, bounciness: 6 }).start();
+
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const todayName = DAY_NAMES[new Date().getDay()];
+  const isToday = item.day.startsWith(todayName);
+
+  const isRestDay = item.day.includes('Rest');
+  const workoutExs = isRestDay ? [] : item.exercises.filter(e =>
+    !e.includes('Full Body Stretching') && !e.includes('Full Body Foam Rolling') && !e.includes('Incline Walk')
+  );
+  const wKey = `${item.day}|${currentWeek}`;
+  const hasAnyLog = !isRestDay && workoutExs.some(e =>
+    (logs[logKeyGlobal(item.day, e)] || []).some(en => en.programWeek === currentWeek)
+  );
+  const isCompleted = !!completedWorkouts[wKey] && hasAnyLog;
+  const isStarted = !isRestDay && !isCompleted && workoutExs.some(e =>
+    (logs[logKeyGlobal(item.day, e)] || []).some(en => en.programWeek === currentWeek)
+  );
+  const accentColor = isCompleted ? '#4ade80' : isStarted ? '#f59e0b' : '#e94560';
+
+  // Split "Monday – Upper Body" → dayName="Monday", workoutLabel="Upper Body"
+  const parts = item.day.split('–').map(s => s.trim());
+  const dayName = parts[0];
+  const workoutLabel = parts[1] || '';
+
+  // Status badge (right side)
+  let badge;
+  if (isCompleted) {
+    badge = (
+      <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#4ade80', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: '#000', fontSize: 13, fontWeight: '900', lineHeight: 16 }}>✓</Text>
+      </View>
+    );
+  } else if (isStarted) {
+    badge = (
+      <View style={{ backgroundColor: '#f59e0b18', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: '#f59e0b44' }}>
+        <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>IN PROGRESS</Text>
+      </View>
+    );
+  } else if (isToday && !isRestDay) {
+    badge = (
+      <View style={{ backgroundColor: '#e9456018', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: '#e9456055' }}>
+        <Text style={{ color: '#e94560', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>🔥 TODAY</Text>
+      </View>
+    );
+  } else if (isRestDay && isToday) {
+    badge = <Text style={{ fontSize: 17, opacity: 0.7 }}>💤</Text>;
+  } else if (isRestDay) {
+    badge = <Text style={{ fontSize: 17, opacity: 0.35 }}>💤</Text>;
+  } else {
+    badge = <Text style={{ color: COLORS.muted, fontSize: 22, fontWeight: '300', opacity: 0.5 }}>›</Text>;
+  }
+
+  const cardBg = isRestDay ? '#0c0c1e' : isToday && !isCompleted ? '#1c1428' : '#1c1c42';
+  const cardBorder = isRestDay ? '#ffffff05' : isToday && !isCompleted ? '#e9456030' : '#ffffff08';
+  const cardBorderTop = isRestDay ? '#ffffff08' : isToday && !isCompleted ? '#e9456055' : '#ffffff35';
+  const shadowCol = isToday && !isCompleted && !isRestDay ? '#e94560' : '#000';
+  const shadowOp = isToday && !isCompleted && !isRestDay ? 0.18 : 0.25;
+
+  return (
+    <Animated.View style={{ transform: [{ scale }], marginBottom: 14 }}>
+      <TouchableOpacity
+        style={{
+          backgroundColor: cardBg,
+          borderWidth: 1,
+          borderColor: cardBorder,
+          borderTopColor: cardBorderTop,
+          borderRadius: 16,
+          flexDirection: 'row',
+          overflow: 'hidden',
+          shadowColor: shadowCol,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: shadowOp,
+          shadowRadius: 10,
+          elevation: 4,
+        }}
+        activeOpacity={1}
+        onPressIn={pressIn}
+        onPressOut={pressOut}
+        onPress={onPress}
+      >
+        {/* Left accent bar */}
+        {!isRestDay && (
+          <View style={{ width: 3, backgroundColor: accentColor, borderRadius: 2, marginVertical: 14, marginLeft: 12, opacity: isToday && !isCompleted ? 1 : 0.7 }} />
+        )}
+
+        <View style={{ flex: 1, paddingHorizontal: 18, paddingVertical: 16 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Left: day name + workout type */}
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
+                <Text style={{ color: isRestDay ? '#4a4a6a' : COLORS.text, fontWeight: '700', fontSize: 16 }}>{dayName}</Text>
+                {workoutLabel ? (
+                  <Text style={{ color: isRestDay ? '#2a2a4a' : COLORS.muted, fontSize: 13 }}>– {workoutLabel}</Text>
+                ) : null}
+              </View>
+              <Text style={{ color: isRestDay ? '#2a2a3a' : '#4a4a72', fontSize: 12, marginTop: 4 }}>
+                {isRestDay ? 'Rest & Recovery' : `${workoutExs.length} exercises`}
+              </Text>
+            </View>
+            {badge}
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 function Root() {
   const { height: screenHeight } = useWindowDimensions();
   const [textVal, setTextVal] = useState('');
@@ -497,6 +671,13 @@ function Root() {
   const [showPassword, setShowPassword] = useState(false);
   const [exerciseDbImages, setExerciseDbImages] = useState({});
   const [menuVisible, setMenuVisible] = useState(false);
+  const sheetSlide = useRef(new Animated.Value(400)).current;
+  const sheetBackdrop = useRef(new Animated.Value(0)).current;
+  const [barPlates, setBarPlates] = useState([]);
+  const keepPlatesRef = useRef(false);
+  const [workoutChip, setWorkoutChip] = useState(false);
+  const chipFade = useRef(new Animated.Value(0)).current;
+  const chipScale = useRef(new Animated.Value(0.7)).current;
   const [currentWeek, setCurrentWeek] = useState(1);
   const TOTAL_WEEKS = 8;
   const [weekDetailFrom, setWeekDetailFrom] = useState('plan');
@@ -592,6 +773,19 @@ function Root() {
 
 
   useEffect(() => {
+    if (!weightPickerVisible) { setBarPlates([]); return; }
+    if (keepPlatesRef.current) { keepPlatesRef.current = false; return; }
+    const w = weightPickerIndex !== null ? parseFloat(sessionSets[weightPickerIndex]?.weight) || 0 : 0;
+    setBarPlates(w >= 45 ? weightToPlates(w) : []);
+  }, [weightPickerVisible]);
+
+  useEffect(() => {
+    setWorkoutChip(false);
+    chipFade.setValue(0);
+    chipScale.setValue(0.7);
+  }, [selectedDay]);
+
+  useEffect(() => {
     const CACHE_KEY = 'exerciseDbCache';
     const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -684,6 +878,21 @@ function Root() {
       setUser(userInfo);
       setAnswers({ name: found.name });
       setAuthError('');
+      const foundLogs = found.logs || {};
+      setLogs(foundLogs);
+      const completedRaw = found.completedWorkouts || {};
+      const validated = {};
+      for (const key of Object.keys(completedRaw)) {
+        const lastPipe = key.lastIndexOf('|');
+        const dayTitle = key.slice(0, lastPipe);
+        const week = parseInt(key.slice(lastPipe + 1));
+        const hasLogs = Object.keys(foundLogs).some(lk =>
+          lk.startsWith(dayTitle + '|') && (foundLogs[lk] || []).some(en => en.programWeek === week)
+        );
+        if (hasLogs) validated[key] = true;
+      }
+      setCompletedWorkouts(validated);
+      if (found.restTimerEnabled !== undefined) setRestTimerEnabled(found.restTimerEnabled);
       setScreen('quiz');
     });
   }
@@ -794,13 +1003,11 @@ function Root() {
 
   function restart() {
     setStep(0);
-    setAnswers({});
     setPlan(null);
     setTextVal('');
     setScreen('quiz');
     setSelectedDay(null);
     setSelectedExercise(null);
-    setLogs({});
     setNutritionForm({ age: '', gender: '', heightFt: '', heightIn: '', weight: '', activityLevel: '' });
     setNutritionResult(null);
   }
@@ -820,28 +1027,76 @@ function Root() {
   const question = QUESTIONS[step];
 
   function LogoutBtn() {
+    const openSheet = () => {
+      sheetSlide.setValue(400);
+      sheetBackdrop.setValue(0);
+      setMenuVisible(true);
+      Animated.parallel([
+        Animated.spring(sheetSlide, { toValue: 0, useNativeDriver: true, speed: 55, bounciness: 3 }),
+        Animated.timing(sheetBackdrop, { toValue: 1, duration: 220, useNativeDriver: true }),
+      ]).start();
+    };
+
+    const closeSheet = (cb) => {
+      Animated.parallel([
+        Animated.spring(sheetSlide, { toValue: 400, useNativeDriver: true, speed: 80, bounciness: 0 }),
+        Animated.timing(sheetBackdrop, { toValue: 0, duration: 180, useNativeDriver: true }),
+      ]).start(() => { setMenuVisible(false); cb && cb(); });
+    };
+
     return (
       <>
-        <TouchableOpacity onPress={() => setMenuVisible(true)} style={{ position: 'absolute', top: 24, right: 0, padding: 20, zIndex: 10 }}>
+        <TouchableOpacity onPress={openSheet} style={{ position: 'absolute', top: 24, right: 0, padding: 20, zIndex: 10 }}>
           <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '700', letterSpacing: 2 }}>⋯</Text>
         </TouchableOpacity>
-        <Modal visible={menuVisible} transparent animationType="fade">
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuVisible(false)}>
-            <View style={{ position: 'absolute', top: 60, right: 8, backgroundColor: '#1c1c3a', borderRadius: 12, borderWidth: 1, borderColor: '#ffffff15', overflow: 'hidden', minWidth: 160 }}>
+
+        <Modal visible={menuVisible} transparent animationType="none" onRequestClose={() => closeSheet()}>
+          <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+            {/* Backdrop */}
+            <Animated.View
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', opacity: sheetBackdrop.interpolate({ inputRange: [0, 1], outputRange: [0, 0.65] }) }}
+            >
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeSheet()} />
+            </Animated.View>
+
+            {/* Sheet */}
+            <Animated.View style={{ transform: [{ translateY: sheetSlide }], backgroundColor: COLORS.card, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: '#ffffff18', paddingBottom: Platform.OS === 'ios' ? 36 : 24 }}>
+              {/* Drag handle */}
+              <View style={{ alignItems: 'center', paddingTop: 14, paddingBottom: 6 }}>
+                <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: '#ffffff25' }} />
+              </View>
+
+              {/* Settings row */}
               <TouchableOpacity
-                onPress={() => { setMenuVisible(false); setSettingsFrom(screen); setScreen('settings'); }}
-                style={{ paddingVertical: 14, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: '#ffffff10' }}
+                onPress={() => closeSheet(() => { setSettingsFrom(screen); setScreen('settings'); })}
+                activeOpacity={0.75}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 24, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#ffffff0e' }}
               >
-                <Text style={{ color: COLORS.text, fontSize: 15, fontWeight: '600' }}>Settings</Text>
+                <View style={{ width: 44, height: 44, borderRadius: 13, backgroundColor: '#ffffff12', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 20 }}>⚙️</Text>
+                </View>
+                <View>
+                  <Text style={{ color: COLORS.text, fontSize: 16, fontWeight: '600' }}>Settings</Text>
+                  <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>Preferences & account</Text>
+                </View>
               </TouchableOpacity>
+
+              {/* Log Out row */}
               <TouchableOpacity
-                onPress={() => { setMenuVisible(false); handleLogout(); }}
-                style={{ paddingVertical: 14, paddingHorizontal: 18 }}
+                onPress={() => closeSheet(handleLogout)}
+                activeOpacity={0.75}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 24, paddingVertical: 18 }}
               >
-                <Text style={{ color: '#ff6b6b', fontSize: 15, fontWeight: '600' }}>Log Out</Text>
+                <View style={{ width: 44, height: 44, borderRadius: 13, backgroundColor: COLORS.accent + '22', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 20 }}>🚪</Text>
+                </View>
+                <View>
+                  <Text style={{ color: COLORS.accent, fontSize: 16, fontWeight: '600' }}>Log Out</Text>
+                  <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>Sign out of your account</Text>
+                </View>
               </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
+            </Animated.View>
+          </View>
         </Modal>
       </>
     );
@@ -867,7 +1122,7 @@ function Root() {
           </View>
 
           <Text style={{ color: COLORS.text, fontSize: 30, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>Create Account</Text>
-          <Text style={{ color: COLORS.muted, fontSize: 15, textAlign: 'center', marginBottom: 36 }}>Start tracking your workouts</Text>
+          <Text style={{ color: COLORS.muted, fontSize: 15, textAlign: 'center', marginBottom: 40 }}>Start tracking your workouts</Text>
 
           {/* Full Name */}
           <View style={styles.authField}>
@@ -906,12 +1161,13 @@ function Root() {
               onChangeText={v => setAuthForm(f => ({ ...f, password: v }))}
               secureTextEntry={!showPassword}
             />
-            <TouchableOpacity
+            <AnimatedPress
               style={{ backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 }}
               onPress={() => setShowPassword(s => !s)}
+              scaleDown={0.88}
             >
               <Text style={{ color: COLORS.text, fontSize: 12, fontWeight: '700' }}>{showPassword ? 'Hide' : 'Show'}</Text>
-            </TouchableOpacity>
+            </AnimatedPress>
           </View>
 
           {/* Gender */}
@@ -922,7 +1178,7 @@ function Root() {
                 key={g}
                 style={{
                   flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center',
-                  backgroundColor: authForm.gender === g ? COLORS.accent : '#1c1c3a',
+                  backgroundColor: authForm.gender === g ? COLORS.accent : COLORS.surface,
                   borderWidth: 1, borderColor: authForm.gender === g ? COLORS.accent : '#2a2a4a',
                 }}
                 onPress={() => setAuthForm(f => ({ ...f, gender: g }))}
@@ -935,12 +1191,13 @@ function Root() {
           {authError ? <Text style={[styles.authError, { marginBottom: 12 }]}>{authError}</Text> : null}
 
           {/* Create Account button */}
-          <TouchableOpacity
+          <AnimatedPress
             style={{ backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 17, alignItems: 'center', marginBottom: 20 }}
             onPress={handleRegister}
+            scaleDown={0.95}
           >
             <Text style={{ color: COLORS.text, fontSize: 17, fontWeight: 'bold' }}>Create Account</Text>
-          </TouchableOpacity>
+          </AnimatedPress>
 
           {/* Divider */}
           <View style={{ height: 1, backgroundColor: '#2a2a4a', marginBottom: 20 }} />
@@ -962,21 +1219,20 @@ function Root() {
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 }} keyboardShouldPersistTaps="handled">
           {/* Logo */}
-          <View style={{ alignItems: 'center', marginBottom: 32 }}>
+          <View style={{ alignItems: 'center', marginBottom: 24 }}>
             <View style={{
-              width: 90, height: 90, borderRadius: 45,
+              width: 64, height: 64, borderRadius: 32,
               backgroundColor: '#2a0a10',
-              borderWidth: 2, borderColor: COLORS.accent,
+              borderWidth: 1.5, borderColor: COLORS.accent,
               justifyContent: 'center', alignItems: 'center',
-              shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 20,
-              elevation: 12,
+              opacity: 0.85,
             }}>
-              <Text style={{ fontSize: 32, fontWeight: 'bold', color: COLORS.accent }}>GB</Text>
+              <Text style={{ fontSize: 22, fontWeight: 'bold', color: COLORS.accent }}>GB</Text>
             </View>
           </View>
 
-          <Text style={{ color: COLORS.text, fontSize: 30, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>Welcome Back</Text>
-          <Text style={{ color: COLORS.muted, fontSize: 15, textAlign: 'center', marginBottom: 36 }}>Log in to continue</Text>
+          <Text style={{ color: COLORS.text, fontSize: 28, fontWeight: '900', textAlign: 'center', marginBottom: 8, letterSpacing: -0.5 }}>Welcome Back</Text>
+          <Text style={{ color: COLORS.muted, fontSize: 14, textAlign: 'center', marginBottom: 40 }}>Log in to continue</Text>
 
           {/* Email field */}
           <View style={styles.authField}>
@@ -1003,23 +1259,25 @@ function Root() {
               onChangeText={v => setAuthForm(f => ({ ...f, password: v }))}
               secureTextEntry={!showPassword}
             />
-            <TouchableOpacity
+            <AnimatedPress
               style={{ backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 }}
               onPress={() => setShowPassword(s => !s)}
+              scaleDown={0.88}
             >
               <Text style={{ color: COLORS.text, fontSize: 12, fontWeight: '700' }}>{showPassword ? 'Hide' : 'Show'}</Text>
-            </TouchableOpacity>
+            </AnimatedPress>
           </View>
 
           {authError ? <Text style={[styles.authError, { marginBottom: 12 }]}>{authError}</Text> : null}
 
           {/* Log In button */}
-          <TouchableOpacity
-            style={{ backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 17, alignItems: 'center', marginBottom: 20 }}
+          <AnimatedPress
+            style={{ backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 20, shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 16, elevation: 10 }}
             onPress={handleLogin}
+            scaleDown={0.95}
           >
-            <Text style={{ color: COLORS.text, fontSize: 17, fontWeight: 'bold' }}>Log In</Text>
-          </TouchableOpacity>
+            <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '900', letterSpacing: 0.5 }}>Log In</Text>
+          </AnimatedPress>
 
           {/* Forgot password */}
           <TouchableOpacity style={{ alignItems: 'center', marginBottom: 20 }}>
@@ -1048,33 +1306,184 @@ function Root() {
     ).length;
     const progress = workoutDays.length > 0 ? completedDays / workoutDays.length : 0;
     const programProgress = Math.round(((currentWeek - 1) / TOTAL_WEEKS + progress / TOTAL_WEEKS) * 100);
+    const momentum = completedDays === workoutDays.length && workoutDays.length > 0
+      ? { label: '🏆 Week complete!', color: '#4ade80' }
+      : progress >= 0.5
+      ? { label: '🔥 You\'re on track', color: '#f97316' }
+      : completedDays > 0
+      ? { label: '💪 Keep the momentum', color: COLORS.muted }
+      : { label: 'Start your first session', color: COLORS.muted };
     return (
       <TouchableOpacity activeOpacity={0.85} onPress={() => { setWeekDetailFrom(fromScreen || 'plan'); setScreen('weekDetail'); }}
-        style={{ backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 14, marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-            <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 18 }}>Week {currentWeek}</Text>
-            <Text style={{ color: COLORS.muted, fontSize: 14 }}>of {TOTAL_WEEKS}</Text>
+        style={{ borderRadius: 20, marginBottom: 28, shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.2, shadowRadius: 24, elevation: 8 }}>
+        <LinearGradient
+          colors={['#1e1040', '#0e1630', '#0a0a1a']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={{ borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#e9456028', borderTopColor: '#e9456055' }}
+        >
+        {/* Top row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <View>
+            <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>Current Week</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+              <Text style={{ color: COLORS.text, fontWeight: '900', fontSize: 36, letterSpacing: -1 }}>{currentWeek}</Text>
+              <Text style={{ color: COLORS.muted, fontSize: 16 }}>/ {TOTAL_WEEKS}</Text>
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity onPress={() => setCurrentWeek(w => Math.max(1, w - 1))} style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek > 1 ? 1 : 0.35 }}>
-              <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>‹</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setCurrentWeek(w => Math.min(TOTAL_WEEKS, w + 1))} style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek < TOTAL_WEEKS ? 1 : 0.35 }}>
-              <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>›</Text>
-            </TouchableOpacity>
+          <View style={{ alignItems: 'flex-end', gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <TouchableOpacity onPress={() => setCurrentWeek(w => Math.max(1, w - 1))} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek > 1 ? 1 : 0.3 }}>
+                <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>‹</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setCurrentWeek(w => Math.min(TOTAL_WEEKS, w + 1))} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek < TOTAL_WEEKS ? 1 : 0.3 }}>
+                <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>›</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: momentum.color, fontSize: 13, fontWeight: '700' }}>{momentum.label}</Text>
           </View>
         </View>
-        <View style={{ height: 6, backgroundColor: '#2a2a4a', borderRadius: 3, marginBottom: 8 }}>
-          <View style={{ height: 6, backgroundColor: '#4a90e2', borderRadius: 3, width: `${programProgress}%` }} />
+        {/* Progress bar */}
+        <AnimatedProgressBar progress={programProgress / 100} height={8} color={COLORS.accent} trackColor="#2a2a4a" glowColor={COLORS.accent} style={{ marginBottom: 14 }} />
+        {/* Stats row */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View>
+            <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Sessions</Text>
+            <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '800', marginTop: 2 }}>{completedDays} <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '400' }}>/ {workoutDays.length}</Text></Text>
+          </View>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Program</Text>
+            <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '800', marginTop: 2 }}>{programProgress}<Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '400' }}>%</Text></Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Remaining</Text>
+            <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '800', marginTop: 2 }}>{workoutDays.length - completedDays} <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '400' }}>sessions</Text></Text>
+          </View>
         </View>
-        <Text style={{ color: COLORS.muted, fontSize: 13, marginBottom: 2 }}>
-          Program Progress: <Text style={{ color: COLORS.text, fontWeight: '600' }}>{programProgress}%</Text>
-        </Text>
-        <Text style={{ color: COLORS.muted, fontSize: 13 }}>
-          <Text style={{ color: COLORS.text, fontWeight: '600' }}>{completedDays} / {workoutDays.length}</Text> Workouts Completed
-        </Text>
+        </LinearGradient>
       </TouchableOpacity>
+    );
+  }
+
+  // ── Next Action Card ─────────────────────────────────────
+  function NextActionCard() {
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const todayName = DAY_NAMES[new Date().getDay()];
+    const todayDay = (plan || []).find(d => d.day.startsWith(todayName));
+    const todayIsRest = todayDay?.day.includes('Rest');
+
+    const allWorkoutDays = (plan || []).filter(d => !d.day.includes('Rest'));
+    const weekComplete = allWorkoutDays.length > 0 && allWorkoutDays.every(d => {
+      const wk = `${d.day}|${currentWeek}`;
+      const dayExs = d.exercises.filter(e =>
+        !e.includes('Full Body Stretching') && !e.includes('Full Body Foam Rolling') && !e.includes('Incline Walk')
+      );
+      const hasLog = dayExs.some(e => (logs[logKey(d.day, e)] || []).some(en => en.programWeek === currentWeek));
+      return !!completedWorkouts[wk] && hasLog;
+    });
+
+    const workoutExs = todayDay && !todayIsRest
+      ? todayDay.exercises.filter(e =>
+          !e.includes('Full Body Stretching') && !e.includes('Full Body Foam Rolling') && !e.includes('Incline Walk')
+        )
+      : [];
+    const todayLoggedCount = workoutExs.filter(e =>
+      (logs[logKey(todayDay?.day, e)] || []).some(en => en.programWeek === currentWeek)
+    ).length;
+    const todayCompleted = !!(completedWorkouts[`${todayDay?.day}|${currentWeek}`]) && todayLoggedCount > 0;
+    const todayStarted = !todayCompleted && todayLoggedCount > 0;
+
+    const nextWorkoutDay = (!todayIsRest && todayCompleted) || todayIsRest
+      ? allWorkoutDays.find(d => !completedWorkouts[`${d.day}|${currentWeek}`])
+      : null;
+
+    let config;
+    if (weekComplete) {
+      config = {
+        emoji: '🏆', title: 'Week complete!',
+        subtitle: `You crushed all ${allWorkoutDays.length} sessions this week.`,
+        cta: 'View Progress', ctaDay: null, ctaScreen: 'weekDetail',
+        accent: '#4ade80', solid: false,
+      };
+    } else if (!todayDay) {
+      return null;
+    } else if (todayIsRest) {
+      const nextLabel = nextWorkoutDay ? nextWorkoutDay.day.split('–').map(s => s.trim())[1] || nextWorkoutDay.day : null;
+      config = {
+        emoji: '💤', title: 'Rest Day',
+        subtitle: nextLabel ? `Up next: ${nextLabel}` : 'Enjoy the recovery.',
+        cta: null, accent: '#4a5580', solid: false,
+      };
+    } else if (todayCompleted) {
+      const nextLabel = nextWorkoutDay ? nextWorkoutDay.day.split('–').map(s => s.trim())[1] || nextWorkoutDay.day : null;
+      config = {
+        emoji: '✅', title: "Today's done!",
+        subtitle: nextLabel ? `Up next: ${nextLabel}` : 'Full week complete!',
+        cta: null, accent: '#4ade80', solid: false,
+      };
+    } else if (todayStarted) {
+      const label = todayDay.day.split('–').map(s => s.trim())[1] || todayDay.day;
+      config = {
+        emoji: '💪', title: `Continue ${label}`,
+        subtitle: `${todayLoggedCount} of ${workoutExs.length} exercises logged`,
+        cta: 'Continue Workout', ctaDay: todayDay,
+        accent: '#f59e0b', solid: true,
+      };
+    } else {
+      const label = todayDay.day.split('–').map(s => s.trim())[1] || todayDay.day;
+      config = {
+        emoji: '🔥', title: `Start ${label}`,
+        subtitle: `${workoutExs.length} exercises  •  ~${workoutExs.length * 8} min`,
+        cta: "Let's Go", ctaDay: todayDay,
+        accent: COLORS.accent, solid: true,
+      };
+    }
+
+    const handleCta = () => {
+      if (config.ctaDay) {
+        setSelectedDay(config.ctaDay);
+        setActiveExerciseIndex(0);
+        setRestTimerRunning(false);
+        setRestingForExercise(null);
+        setScreen('day');
+      } else if (config.ctaScreen) {
+        setWeekDetailFrom('plan');
+        setScreen(config.ctaScreen);
+      }
+    };
+
+    return (
+      <LinearGradient
+        colors={[config.accent + '28', config.accent + '0a', 'transparent']}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={{ borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: config.accent + '40', borderTopColor: config.accent + '70' }}
+      >
+        <View style={{ padding: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: config.cta ? 16 : 0 }}>
+            <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: config.accent + '20', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: config.accent + '40' }}>
+              <Text style={{ fontSize: 24 }}>{config.emoji}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: COLORS.text, fontSize: 19, fontWeight: '800', letterSpacing: -0.3 }}>{config.title}</Text>
+              <Text style={{ color: COLORS.muted, fontSize: 13, marginTop: 3 }}>{config.subtitle}</Text>
+            </View>
+          </View>
+          {config.cta ? (
+            <AnimatedPress
+              onPress={handleCta}
+              style={{
+                backgroundColor: config.solid ? config.accent : config.accent + '25',
+                borderRadius: 14, paddingVertical: 15, alignItems: 'center',
+                borderWidth: config.solid ? 0 : 1, borderColor: config.accent + '60',
+              }}
+              scaleDown={0.97}
+            >
+              <Text style={{ color: config.solid ? '#fff' : config.accent, fontWeight: '800', fontSize: 16, letterSpacing: 0.2 }}>
+                {config.cta}
+              </Text>
+            </AnimatedPress>
+          ) : null}
+        </View>
+      </LinearGradient>
     );
   }
 
@@ -1122,8 +1531,14 @@ function Root() {
             }).map(opt => {
               const meta = GOAL_META[opt];
               const label = opt.startsWith('Building Muscle') ? 'Build Muscle' : opt;
+              const isRecommended = opt.startsWith('Building Muscle');
               return (
-                <TouchableOpacity key={opt} style={styles.goalCard} onPress={() => handleAnswer(opt)}>
+                <AnimatedPress key={opt} style={[styles.goalCard, isRecommended && { borderColor: COLORS.accent + '55', shadowColor: COLORS.accent, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 }, !isRecommended && { opacity: 0.6 }]} onPress={() => handleAnswer(opt)} scaleDown={0.97}>
+                  {isRecommended && (
+                    <View style={{ position: 'absolute', top: -1, right: 14, backgroundColor: COLORS.accent, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, zIndex: 1 }}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>RECOMMENDED</Text>
+                    </View>
+                  )}
                   <LinearGradient
                     colors={meta?.iconGradient}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -1140,7 +1555,7 @@ function Root() {
                     <Text style={styles.goalSubtitle}>{meta?.subtitle}</Text>
                   </View>
                   <Text style={styles.goalChevron}>›</Text>
-                </TouchableOpacity>
+                </AnimatedPress>
               );
             })}
           </View>
@@ -1393,73 +1808,91 @@ function Root() {
       }, 0)
     , 0);
 
+    const exercisesTracked = Object.keys(logs).filter(k => logs[k].length > 0).length;
+    const volumeDisplay = totalVolume >= 1000
+      ? `${(totalVolume / 1000).toFixed(1)}k`
+      : totalVolume > 0 ? String(Math.round(totalVolume)) : '—';
+
     return (
-      <View style={[styles.container, { paddingTop: 70 }]}>
+      <View style={[styles.container, { paddingTop: 80 }]}>
         <LogoutBtn />
         <TouchableOpacity onPress={() => setScreen(settingsFrom)} style={[styles.backBtn, { position: 'absolute', top: 20, left: 16, zIndex: 10 }]}>
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
 
-        <Text style={styles.title}>Settings</Text>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          {/* Page header */}
+          <View style={{ marginTop: 8, marginBottom: 20 }}>
+            <Text style={{ color: COLORS.text, fontSize: 28, fontWeight: '900', letterSpacing: -0.5 }}>Settings</Text>
+            <Text style={{ color: COLORS.muted, fontSize: 14, marginTop: 4 }}>Account & preferences</Text>
+          </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {/* User Info */}
-          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 8, marginTop: 4 }}>ACCOUNT</Text>
-          <View style={{ backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, marginBottom: 20, overflow: 'hidden' }}>
+          {/* Profile card */}
+          <LinearGradient
+            colors={['#1e1040', '#0e1630', '#0a0a1a']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={{ borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: '#ffffff08', borderTopColor: '#ffffff35' }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <View style={{ width: 58, height: 58, borderRadius: 18, backgroundColor: COLORS.accent + '25', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.accent + '55' }}>
+                <Text style={{ color: COLORS.accent, fontSize: 24, fontWeight: '900' }}>
+                  {(user?.name || '?')[0].toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '800' }}>{user?.name || '—'}</Text>
+                <Text style={{ color: COLORS.muted, fontSize: 13, marginTop: 3 }}>{user?.email || '—'}</Text>
+              </View>
+            </View>
+            <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#ffffff10', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.accent }} />
+              <Text style={{ color: COLORS.muted, fontSize: 13 }}>
+                <Text style={{ color: COLORS.text, fontWeight: '600' }}>{answers?.goal || '—'}</Text>
+              </Text>
+            </View>
+          </LinearGradient>
+
+          {/* Stats row */}
+          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 10 }}>YOUR DATA</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
             {[
-              { label: 'Name', value: user?.name || '—' },
-              { label: 'Email', value: user?.email || '—' },
-              { label: 'Goal', value: answers?.goal || '—' },
-            ].map(({ label, value }, idx, arr) => (
-              <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: '#ffffff0d' }}>
-                <Text style={{ color: COLORS.muted, fontSize: 14 }}>{label}</Text>
-                <Text style={{ color: COLORS.text, fontSize: 14, fontWeight: '500' }}>{value}</Text>
+              { label: 'Sessions', value: String(totalLogEntries), color: COLORS.accent },
+              { label: 'Volume (lbs)', value: volumeDisplay, color: '#4ade80' },
+              { label: 'Exercises', value: String(exercisesTracked), color: COLORS.text },
+            ].map(({ label, value, color }) => (
+              <View key={label} style={[styles.statCard, { borderTopWidth: 2, borderTopColor: color + '55' }]}>
+                <Text style={[styles.statValue, { color }]}>{value}</Text>
+                <Text style={styles.statLabel}>{label}</Text>
               </View>
             ))}
           </View>
 
           {/* Preferences */}
-          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 8 }}>PREFERENCES</Text>
-          <View style={{ backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, marginBottom: 20, overflow: 'hidden' }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 }}>
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={{ color: COLORS.text, fontSize: 14 }}>Rest Timer</Text>
-                <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>Auto-start rest timer after each set (workouts only)</Text>
+          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 10 }}>PREFERENCES</Text>
+          <View style={{ backgroundColor: COLORS.deep, borderWidth: 1, borderColor: '#ffffff06', borderTopColor: '#ffffff28', borderRadius: 16, marginBottom: 24, overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16, paddingHorizontal: 16 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#ffffff10', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 18 }}>⏱</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: COLORS.text, fontSize: 15, fontWeight: '600' }}>Rest Timer</Text>
+                <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>Auto-start after each set</Text>
               </View>
               <Switch
                 value={restTimerEnabled}
                 onValueChange={v => {
                   setRestTimerEnabled(v);
                   if (user) updateDoc(doc(db, 'users', user.email), { restTimerEnabled: v });
-                  if (!v) {
-                    setRestTimerRunning(false);
-                    setRestTimerRemaining(0);
-                    setRestingForExercise(null);
-                  }
+                  if (!v) { setRestTimerRunning(false); setRestTimerRemaining(0); setRestingForExercise(null); }
                 }}
-                trackColor={{ false: '#3a3a5a', true: '#4a90e2' }}
+                trackColor={{ false: '#3a3a5a', true: '#4ade80' }}
                 thumbColor={restTimerEnabled ? '#fff' : '#aaa'}
               />
             </View>
           </View>
 
-          {/* Log Stats */}
-          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 8 }}>YOUR DATA</Text>
-          <View style={{ backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, marginBottom: 20, overflow: 'hidden' }}>
-            {[
-              { label: 'Total Sessions Logged', value: String(totalLogEntries) },
-              { label: 'Total Volume Lifted', value: totalVolume > 0 ? `${totalVolume.toLocaleString()} lbs` : '—' },
-              { label: 'Exercises Tracked', value: String(Object.keys(logs).filter(k => logs[k].length > 0).length) },
-            ].map(({ label, value }, idx, arr) => (
-              <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: '#ffffff0d' }}>
-                <Text style={{ color: COLORS.muted, fontSize: 14 }}>{label}</Text>
-                <Text style={{ color: COLORS.text, fontSize: 14, fontWeight: '500' }}>{value}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Danger Zone */}
-          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 8 }}>DANGER ZONE</Text>
+          {/* Danger zone */}
+          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 10 }}>DANGER ZONE</Text>
           <TouchableOpacity
             onPress={() => Alert.alert(
               'Reset All Logs',
@@ -1472,9 +1905,15 @@ function Root() {
                 }},
               ]
             )}
-            style={{ backgroundColor: '#2a1a1a', borderWidth: 1, borderColor: '#ff6b6b40', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 20 }}
+            style={{ backgroundColor: COLORS.accent + '15', borderWidth: 1, borderColor: COLORS.accent + '40', borderRadius: 16, paddingVertical: 18, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 }}
           >
-            <Text style={{ color: '#ff6b6b', fontSize: 15, fontWeight: '600' }}>Reset All Logs</Text>
+            <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.accent + '22', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 18 }}>🗑️</Text>
+            </View>
+            <View>
+              <Text style={{ color: COLORS.accent, fontSize: 15, fontWeight: '700' }}>Reset All Logs</Text>
+              <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>Permanently delete workout history</Text>
+            </View>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -1542,7 +1981,7 @@ function Root() {
             { label: 'Total Volume', value: totalVolume > 0 ? `${totalVolume.toLocaleString()} lbs` : '—' },
             { label: 'Time Trained', value: estimatedMinutes > 0 ? timeTrained : '—' },
           ].map(({ label, value }) => (
-            <View key={label} style={{ backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 12, padding: 14, marginBottom: 8 }}>
+            <View key={label} style={{ backgroundColor: COLORS.surface, borderWidth: 1, borderColor: '#ffffff08', borderTopColor: '#ffffff30', borderRadius: 12, padding: 14, marginBottom: 8 }}>
               <Text style={{ color: COLORS.muted, fontSize: 12, marginBottom: 4 }}>{label}</Text>
               <Text style={{ color: COLORS.text, fontSize: 20, fontWeight: 'bold' }}>{value}</Text>
             </View>
@@ -1554,7 +1993,7 @@ function Root() {
               const d = planDayMap[i];
               const isRest = !d || d.day.includes('Rest');
               const isDone = d && d.exercises.some(e => (logs[logKey(d.day, e)] || []).length > 0);
-              const barColor = isRest ? '#2a2a4a' : isDone ? '#4a90e2' : '#3a3a5a';
+              const barColor = isRest ? '#2a2a4a' : isDone ? '#4ade80' : '#3a3a5a';
               return (
                 <View key={label} style={{ alignItems: 'center', flex: 1 }}>
                   <Text style={{ color: COLORS.muted, fontSize: 11, marginBottom: 4 }}>{label}</Text>
@@ -1578,45 +2017,24 @@ function Root() {
         </TouchableOpacity>
         <Text style={styles.title}>Your Workout Plan</Text>
 
+        {/* Next Action Card */}
+        <NextActionCard />
+
         {/* Week Tracker Card */}
         <WeekTrackerCard />
 
         <FlatList
           data={plan}
           keyExtractor={(_, i) => i.toString()}
-          renderItem={({ item }) => {
-            const isRestDay = item.day.includes('Rest');
-            const workoutExs = isRestDay ? [] : item.exercises.filter(e =>
-              !e.includes('Full Body Stretching') && !e.includes('Full Body Foam Rolling') && !e.includes('Incline Walk')
-            );
-            const wKey = `${item.day}|${currentWeek}`;
-            const hasAnyLog = !isRestDay && workoutExs.some(e =>
-              (logs[logKey(item.day, e)] || []).some(en => en.programWeek === currentWeek)
-            );
-            const isCompleted = !!completedWorkouts[wKey] && hasAnyLog;
-            const isStarted = !isRestDay && !isCompleted && workoutExs.some(e =>
-              (logs[logKey(item.day, e)] || []).some(en => en.programWeek === currentWeek)
-            );
-            return (
-              <TouchableOpacity style={[styles.card, { position: 'relative', backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14 }]} onPress={() => { setSelectedDay(item); setActiveExerciseIndex(0); setRestTimerRunning(false); setRestingForExercise(null); setScreen('day'); }}>
-                {isCompleted && (
-                  <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, width: 22, height: 22, borderRadius: 11, backgroundColor: '#4ade80', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#000', fontSize: 13, fontWeight: '800', lineHeight: 16 }}>✓</Text>
-                  </View>
-                )}
-                {isStarted && (
-                  <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, width: 22, height: 22, borderRadius: 11, backgroundColor: '#f59e0b', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#000', fontSize: 13, fontWeight: '800', lineHeight: 16 }}>~</Text>
-                  </View>
-                )}
-                <View style={styles.cardRow}>
-                  <Text style={styles.dayTitle}>{item.day}</Text>
-                  <Text style={[styles.chevron, { opacity: isCompleted || isStarted ? 0 : 1 }]}>›</Text>
-                </View>
-                <Text style={styles.exerciseCount}>{item.exercises.length} exercises</Text>
-              </TouchableOpacity>
-            );
-          }}
+          renderItem={({ item }) => (
+            <DayCard
+              item={item}
+              currentWeek={currentWeek}
+              logs={logs}
+              completedWorkouts={completedWorkouts}
+              onPress={() => { setSelectedDay(item); setActiveExerciseIndex(0); setRestTimerRunning(false); setRestingForExercise(null); setScreen('day'); }}
+            />
+          )}
         />
       </View>
     );
@@ -1651,39 +2069,84 @@ function Root() {
       return { label: `∿ Last: ${latest} lbs`, color: COLORS.muted, bg: '#2a2a4a', border: null };
     }
 
+    const DAY_NAMES_DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const isToday = selectedDay.day.startsWith(DAY_NAMES_DAY[new Date().getDay()]);
+    const workoutLabel = isRestDay
+      ? 'Rest & Recovery'
+      : selectedDay.day.split('–').map(s => s.trim())[1] || selectedDay.day;
+
     return (
-      <View style={[styles.container, { paddingTop: 85 }]}>
-        {/* Top nav row */}
+      <View style={[styles.container, { paddingTop: 80 }]}>
         <LogoutBtn />
         <TouchableOpacity onPress={() => setScreen('plan')} style={[styles.backBtn, { position: 'absolute', top: 20, left: 16, zIndex: 10 }]}>
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
 
-        {/* Title */}
-        <View style={{ width: '100%', height: 40, alignItems: 'center', justifyContent: 'center', marginTop: 16, marginBottom: 4 }}>
-          <TouchableOpacity
-            onPress={() => { if (dayIndex > 0) { setSelectedDay(plan[dayIndex - 1]); setActiveExerciseIndex(0); } }}
-            style={{ position: 'absolute', left: 6, top: 2, width: 36, height: 36, borderRadius: 8, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: dayIndex > 0 ? 1 : 0.35 }}>
-            <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '700', lineHeight: 26 }}>‹</Text>
-          </TouchableOpacity>
-          <Text style={[styles.title, { lineHeight: 40 }]}>{selectedDay.day}</Text>
-          <TouchableOpacity
-            onPress={() => { if (plan && dayIndex < plan.length - 1) { setSelectedDay(plan[dayIndex + 1]); setActiveExerciseIndex(0); } }}
-            style={{ position: 'absolute', right: 6, top: 2, width: 36, height: 36, borderRadius: 8, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: plan && dayIndex < plan.length - 1 ? 1 : 0.35 }}>
-            <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '700', lineHeight: 26 }}>›</Text>
-          </TouchableOpacity>
+        {/* Action-driven header */}
+        <View style={{ marginTop: 8, marginBottom: 14 }}>
+          {/* Context badge */}
+          {isToday && !isRestDay && (
+            <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+              <View style={{ backgroundColor: COLORS.accent + '20', borderRadius: 7, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.accent + '50' }}>
+                <Text style={{ color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.2 }}>🔥  TODAY</Text>
+              </View>
+            </View>
+          )}
+          {isToday && isRestDay && (
+            <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+              <View style={{ backgroundColor: '#4a558020', borderRadius: 7, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#4a558050' }}>
+                <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1.2 }}>💤  TODAY</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Workout name + day nav arrows inline */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Text style={{ color: COLORS.text, fontSize: 28, fontWeight: '900', letterSpacing: -0.5, lineHeight: 32, flex: 1 }}>
+              {workoutLabel}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => { if (dayIndex > 0) { setSelectedDay(plan[dayIndex - 1]); setActiveExerciseIndex(0); } }}
+                style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: dayIndex > 0 ? 1 : 0.35 }}>
+                <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '700', lineHeight: 26 }}>‹</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { if (plan && dayIndex < plan.length - 1) { setSelectedDay(plan[dayIndex + 1]); setActiveExerciseIndex(0); } }}
+                style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: plan && dayIndex < plan.length - 1 ? 1 : 0.35 }}>
+                <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '700', lineHeight: 26 }}>›</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Action / status line */}
+          {!isRestDay && progressFraction === 0 && (
+            <Text style={{ color: COLORS.muted, fontSize: 14 }}>
+              Start your workout · {totalExercises} exercises · ~{estimatedMinutes} min
+            </Text>
+          )}
+          {!isRestDay && progressFraction > 0 && progressFraction < 1 && (
+            <Text style={{ color: '#f59e0b', fontSize: 14, fontWeight: '600' }}>
+              {loggedCount} of {totalExercises} done — keep going 💪
+            </Text>
+          )}
+          {!isRestDay && progressFraction >= 1 && (
+            <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '600' }}>
+              All exercises logged ✓
+            </Text>
+          )}
+          {isRestDay && (
+            <Text style={{ color: COLORS.muted, fontSize: 14 }}>
+              Recovery is part of the programme.
+            </Text>
+          )}
         </View>
-        {!isRestDay && (
-          <Text style={{ color: COLORS.muted, fontSize: 13, textAlign: 'center', marginBottom: 10 }}>
-            ⏱ {totalExercises} exercises  •  ~{estimatedMinutes} min
-          </Text>
-        )}
 
         {/* Week Tracker + Progress Ring row */}
         {!isRestDay && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
             <TouchableOpacity activeOpacity={0.85} onPress={() => { setWeekDetailFrom('day'); setScreen('weekDetail'); }}
-              style={{ flex: 1, backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 10 }}>
+              style={{ flex: 1, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: '#ffffff08', borderTopColor: '#ffffff30', borderRadius: 16, padding: 14 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
                   <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 15 }}>Week {currentWeek}</Text>
@@ -1698,9 +2161,10 @@ function Root() {
                   </TouchableOpacity>
                 </View>
               </View>
-              <View style={{ height: 4, backgroundColor: '#2a2a4a', borderRadius: 2, marginBottom: 6 }}>
-                <View style={{ height: 4, backgroundColor: '#4a90e2', borderRadius: 2, width: `${Math.round(((currentWeek - 1) / TOTAL_WEEKS + (workoutExercises.filter(e => (logs[logKey(selectedDay.day, e)] || []).some(en => en.programWeek === currentWeek)).length / Math.max(workoutExercises.length, 1)) / TOTAL_WEEKS) * 100)}%` }} />
-              </View>
+              <AnimatedProgressBar
+                progress={((currentWeek - 1) / TOTAL_WEEKS + (workoutExercises.filter(e => (logs[logKey(selectedDay.day, e)] || []).some(en => en.programWeek === currentWeek)).length / Math.max(workoutExercises.length, 1)) / TOTAL_WEEKS)}
+                height={4} color={COLORS.accent} trackColor="#2a2a4a" style={{ marginBottom: 6 }}
+              />
               <Text style={{ color: COLORS.muted, fontSize: 11 }}>
                 <Text style={{ color: COLORS.text, fontWeight: '600' }}>{loggedCount} / {totalExercises}</Text> Exercises Logged
               </Text>
@@ -1846,6 +2310,7 @@ function Root() {
               const isFoamRolling = item.includes('Full Body Foam Rolling');
               const isResting = restTimerRunning && restingForExercise === item;
               const isActive = !isRestDay && !isStretching && !isFoamRolling && index === activeExerciseIndex;
+              const isLogged = !isStretching && !isFoamRolling && !isRestDay && thisWeekLogs.length > 0;
               const sr = parseSetsReps(item);
               const smartPill = (!isStretching && !isFoamRolling && !isRestDay) ? getSmartPill(item) : null;
               const restSecs = (!isStretching && !isFoamRolling && !isRestDay) ? getRestSuggestion(item) : null;
@@ -1869,7 +2334,7 @@ function Root() {
               ];
               return (
                 <TouchableOpacity
-                  style={[styles.exerciseCard, { position: 'relative' }, isActive && { borderLeftWidth: 3, borderLeftColor: COLORS.accent }, isResting && { borderColor: '#4ade8044', borderWidth: 1 }]}
+                  style={[styles.exerciseCard, { position: 'relative' }, isLogged && { backgroundColor: '#191932', borderTopColor: '#4ade8028', shadowColor: '#4ade80', shadowOpacity: 0.08, shadowRadius: 8 }, isActive && { borderLeftWidth: 3, borderLeftColor: COLORS.accent, shadowColor: COLORS.accent, shadowOpacity: 0.12, shadowRadius: 10 }, isResting && { borderColor: '#4ade8044', borderWidth: 1, shadowColor: '#4ade80', shadowOpacity: 0.1, shadowRadius: 10 }]}
                   onPress={() => {
                     if (!isStretching && !isFoamRolling && !isRestDay) {
                       setSelectedExercise(item);
@@ -1897,6 +2362,11 @@ function Root() {
                   <View style={[styles.exerciseCardTop, (isStretching || isFoamRolling) && { justifyContent: 'center' }]}>
                     {!isStretching && !isFoamRolling && <ExerciseImage exerciseName={item} exerciseDbImages={exerciseDbImages} />}
                     <View style={[styles.exerciseCardInfo, (isStretching || isFoamRolling) && { alignItems: 'center' }]}>
+                      {!isStretching && !isFoamRolling && !isRestDay && (
+                        <Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 3, opacity: 0.7 }}>
+                          {String(index + 1).padStart(2, '0')}
+                        </Text>
+                      )}
                       <Text style={styles.exerciseName}>{cleanExerciseName(item)}</Text>
                       {sr && (
                         <View style={styles.pillRow}>
@@ -1912,7 +2382,16 @@ function Root() {
                       {!isRestDay && !isStretching && !isFoamRolling && (
                         isResting
                           ? <Text style={{ color: '#4ade80', fontSize: 12, fontWeight: '600', marginTop: 2 }}>Resting • {formatTime(restTimerRemaining)}</Text>
-                          : <Text style={styles.logCount}>{thisWeekLogs.length === 0 ? 'No logs yet' : ' '}</Text>
+                          : (() => {
+                              if (thisWeekLogs.length === 0) {
+                                return <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>Tap to log</Text>;
+                              }
+                              const last = thisWeekLogs[thisWeekLogs.length - 1];
+                              const sets = last.sets || [{ weight: last.weight, reps: last.reps }];
+                              const w = sets[0]?.weight;
+                              const summary = w ? `${sets.length} sets · ${w} kg` : `${sets.length} sets logged`;
+                              return <Text style={{ color: '#4ade80', fontSize: 12, fontWeight: '600', marginTop: 2 }}>{summary}</Text>;
+                            })()
                       )}
                       {restLabel && !isResting && (
                         <Text style={{ color: COLORS.muted, fontSize: 11, marginTop: 2 }}>⏱ {restLabel}</Text>
@@ -1986,7 +2465,7 @@ function Root() {
         {/* Switch Sides Flash */}
         <Modal visible={showSwitchSides} transparent animationType="fade">
           <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'center', alignItems: 'center' }}>
-            <View style={{ backgroundColor: '#1c1c3a', borderRadius: 20, paddingVertical: 36, paddingHorizontal: 48, alignItems: 'center', borderWidth: 1, borderColor: '#4ade8044' }}>
+            <View style={{ backgroundColor: COLORS.card, borderRadius: 20, paddingVertical: 36, paddingHorizontal: 48, alignItems: 'center', borderWidth: 1, borderColor: '#4ade8044' }}>
               <Text style={{ fontSize: 40, marginBottom: 12 }}>🔄</Text>
               <Text style={{ color: '#4ade80', fontSize: 28, fontWeight: '800', letterSpacing: 0.5 }}>Switch Sides</Text>
             </View>
@@ -1999,22 +2478,47 @@ function Root() {
           const dayAllLogged = !isRestDay && totalExercises > 0 && loggedCount === totalExercises;
           if (!dayAllLogged && !showCompleteButton) return null;
           const done = !!completedWorkouts[wKey];
+
+          const markDone = () => {
+            if (done) { setShowDayComplete(true); return; }
+            const updated = { ...completedWorkouts, [wKey]: true };
+            setCompletedWorkouts(updated);
+            if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updated });
+            setShowCompleteButton(false);
+            setShowDayComplete(true);
+            setTimeout(() => {
+              setWorkoutChip(true);
+              Animated.parallel([
+                Animated.timing(chipFade, { toValue: 1, duration: 350, useNativeDriver: true }),
+                Animated.spring(chipScale, { toValue: 1, speed: 60, bounciness: 8, useNativeDriver: true }),
+              ]).start();
+            }, 2000);
+          };
+
+          if (done && workoutChip) {
+            return (
+              <Animated.View style={{ position: 'absolute', bottom: 32, left: 0, right: 0, alignItems: 'center', opacity: chipFade, transform: [{ scale: chipScale }] }}>
+                <TouchableOpacity onPress={() => setShowDayComplete(true)} activeOpacity={0.8}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.deep, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 10, borderWidth: 1, borderColor: '#4ade8040', borderTopColor: '#4ade8070', shadowColor: '#4ade80', shadowOpacity: 0.2, shadowRadius: 12, elevation: 6 }}>
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#4ade80', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#000', fontSize: 11, fontWeight: '900', lineHeight: 14 }}>✓</Text>
+                  </View>
+                  <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Workout Complete</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            );
+          }
+
           return (
             <View style={{ position: 'absolute', bottom: 32, left: 24, right: 24 }}>
-              <TouchableOpacity
-                style={{ backgroundColor: done ? '#1a3a1a' : '#4ade80', borderRadius: 16, paddingVertical: 18, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, borderWidth: done ? 1 : 0, borderColor: '#4ade8066', shadowColor: '#4ade80', shadowOpacity: done ? 0.15 : 0.5, shadowRadius: 16, elevation: 10 }}
-                onPress={() => {
-                  if (done) { setShowDayComplete(true); return; }
-                  const updated = { ...completedWorkouts, [wKey]: true };
-                  setCompletedWorkouts(updated);
-                  if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updated });
-                  setShowCompleteButton(false);
-                  setShowDayComplete(true);
-                }}
+              <AnimatedPress
+                style={{ backgroundColor: done ? '#12221a' : '#4ade80', borderRadius: 16, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, borderWidth: done ? 1 : 0, borderColor: '#4ade8055', shadowColor: '#4ade80', shadowOpacity: done ? 0.1 : 0.35, shadowRadius: 14, elevation: done ? 4 : 8 }}
+                onPress={markDone}
+                scaleDown={0.95}
               >
-                <Text style={{ color: done ? '#4ade80' : '#000', fontWeight: '800', fontSize: 17 }}>{done ? 'Workout Completed' : 'Complete Workout'}</Text>
-                <Text style={{ color: done ? '#4ade80' : '#000', fontSize: 17, fontWeight: '800' }}>✓</Text>
-              </TouchableOpacity>
+                <Text style={{ color: done ? '#4ade80' : '#000', fontWeight: '800', fontSize: 16 }}>{done ? 'Workout Completed' : 'Complete Workout'}</Text>
+                <Text style={{ color: done ? '#4ade80' : '#000', fontSize: 16, fontWeight: '800' }}>✓</Text>
+              </AnimatedPress>
             </View>
           );
         })()}
@@ -2034,9 +2538,6 @@ function Root() {
       ? Math.max(...data.map(en => en.programWeek))
       : 0;
     const canLogThisWeek = currentWeek <= maxLoggedWeek + 1;
-    const latest = data.length > 0 ? data[data.length - 1].weight : null;
-    const first = data.length > 1 ? data[0].weight : null;
-
 
     const allWorkoutLogged = (() => {
       const dayExs = (selectedDay?.exercises || []).filter(e =>
@@ -2049,7 +2550,16 @@ function Root() {
       );
     })();
     const shouldShowCompleteBtn = allWorkoutLogged;
-    const totalChange = first && latest ? (parseFloat(latest) - parseFloat(first)).toFixed(1) : null;
+    const best = data.length > 0
+      ? Math.max(...data.map(en => {
+          const sets = en.sets || [{ weight: en.weight }];
+          return Math.max(...sets.map(s => parseFloat(s.weight) || 0));
+        }))
+      : null;
+    const prevWeekData = data.filter(e => e.programWeek === currentWeek - 1);
+    const thisWeekLatest = thisWeekData.length > 0 ? (thisWeekData[thisWeekData.length - 1].sets?.[0]?.weight || thisWeekData[thisWeekData.length - 1].weight) : null;
+    const prevWeekLatest = prevWeekData.length > 0 ? (prevWeekData[prevWeekData.length - 1].sets?.[0]?.weight || prevWeekData[prevWeekData.length - 1].weight) : null;
+    const weekChange = (thisWeekLatest && prevWeekLatest) ? (parseFloat(thisWeekLatest) - parseFloat(prevWeekLatest)).toFixed(1) : null;
 
     const dayExercises = (selectedDay?.exercises || []).filter(e =>
       !e.includes('Full Body Stretching') && !e.includes('Full Body Foam Rolling') && !e.includes('Incline Walk')
@@ -2099,12 +2609,12 @@ function Root() {
 
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
           {/* Week selector */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 }}>
-            <TouchableOpacity onPress={() => { const w = Math.max(1, currentWeek - 1); setCurrentWeek(w); resetSetsForWeek(w); }} style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek > 1 ? 1 : 0.35 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.deep, borderWidth: 1, borderColor: '#ffffff06', borderTopColor: '#ffffff28', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14 }}>
+            <TouchableOpacity onPress={() => { const w = Math.max(1, currentWeek - 1); setCurrentWeek(w); resetSetsForWeek(w); }} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek > 1 ? 1 : 0.35 }}>
               <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>‹</Text>
             </TouchableOpacity>
             <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 15 }}>
-              Week <Text style={{ color: '#4a90e2' }}>{currentWeek}</Text>
+              Week <Text style={{ color: COLORS.text }}>{currentWeek}</Text>
               <Text style={{ color: COLORS.muted, fontWeight: 'normal', fontSize: 13 }}> of {TOTAL_WEEKS}</Text>
             </Text>
             <TouchableOpacity onPress={() => { const w = Math.min(TOTAL_WEEKS, currentWeek + 1); setCurrentWeek(w); resetSetsForWeek(w); }} style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: currentWeek < TOTAL_WEEKS ? 1 : 0.35 }}>
@@ -2113,12 +2623,12 @@ function Root() {
           </View>
 
           {/* Exercise selector */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 }}>
-            <TouchableOpacity onPress={() => exIdx > 0 && navigateExercise(exIdx - 1)} style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: exIdx > 0 ? 1 : 0.35 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.deep, borderWidth: 1, borderColor: '#ffffff06', borderTopColor: '#ffffff28', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14 }}>
+            <TouchableOpacity onPress={() => exIdx > 0 && navigateExercise(exIdx - 1)} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: exIdx > 0 ? 1 : 0.35 }}>
               <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>‹</Text>
             </TouchableOpacity>
             <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 15, flex: 1, textAlign: 'center', paddingHorizontal: 8 }} numberOfLines={1}>
-              <Text style={{ color: '#4a90e2' }}>{cleanExerciseName(selectedExercise)}</Text>
+              <Text style={{ color: COLORS.text }}>{cleanExerciseName(selectedExercise)}</Text>
               <Text style={{ color: COLORS.muted, fontWeight: 'normal', fontSize: 13 }}> ({exIdx + 1}/{dayExercises.length})</Text>
             </Text>
             <TouchableOpacity onPress={() => exIdx < dayExercises.length - 1 && navigateExercise(exIdx + 1)} style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#2a2a4a', alignItems: 'center', justifyContent: 'center', opacity: exIdx < dayExercises.length - 1 ? 1 : 0.35 }}>
@@ -2198,29 +2708,32 @@ function Root() {
           {/* Stats Row */}
           {data.length > 0 && (
             <View style={styles.statsRow}>
-              <View style={styles.statCard}>
-                <Text style={styles.statValue}>{latest}</Text>
-                <Text style={styles.statLabel}>Latest</Text>
+              <View style={[styles.statCard, { borderTopColor: '#f59e0b55' }]}>
+                <Text style={{ fontSize: 14, marginBottom: 4 }}>🏆</Text>
+                <Text style={styles.statValue}>{best ? `${best}` : '—'}</Text>
+                <Text style={styles.statLabel}>Personal Best</Text>
+              </View>
+              <View style={[styles.statCard, weekChange !== null ? { borderTopColor: parseFloat(weekChange) >= 0 ? '#4ade8055' : '#e9456055' } : {}]}>
+                <Text style={{ fontSize: 14, marginBottom: 4 }}>📈</Text>
+                <Text style={[styles.statValue, {
+                  color: weekChange === null ? COLORS.muted : parseFloat(weekChange) >= 0 ? COLORS.success : COLORS.accent
+                }]}>
+                  {weekChange === null ? (thisWeekData.length > 0 ? 'First' : '—') : `${parseFloat(weekChange) >= 0 ? '+' : ''}${weekChange}`}
+                </Text>
+                <Text style={styles.statLabel}>vs Last Week</Text>
               </View>
               <View style={styles.statCard}>
+                <Text style={{ fontSize: 14, marginBottom: 4 }}>📊</Text>
                 <Text style={styles.statValue}>{data.length}</Text>
-                <Text style={styles.statLabel}>Weeks</Text>
+                <Text style={styles.statLabel}>Sessions</Text>
               </View>
-              {totalChange !== null && (
-                <View style={styles.statCard}>
-                  <Text style={[styles.statValue, { color: parseFloat(totalChange) >= 0 ? COLORS.success : COLORS.accent }]}>
-                    {parseFloat(totalChange) >= 0 ? '+' : ''}{totalChange}
-                  </Text>
-                  <Text style={styles.statLabel}>Total Change</Text>
-                </View>
-              )}
             </View>
           )}
 
 
           {/* Log Sets */}
           {!hasThisWeekLog && !canLogThisWeek && (
-            <View style={{ backgroundColor: '#1c1c3a55', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 16, marginBottom: 16, alignItems: 'center', gap: 6 }}>
+            <View style={{ backgroundColor: COLORS.deep, borderWidth: 1, borderColor: '#ffffff10', borderRadius: 14, padding: 16, marginBottom: 16, alignItems: 'center', gap: 6 }}>
               <Text style={{ fontSize: 22 }}>🔒</Text>
               <Text style={{ color: COLORS.text, fontWeight: '700', fontSize: 15 }}>Week {currentWeek} Locked</Text>
               <Text style={{ color: COLORS.muted, fontSize: 13, textAlign: 'center' }}>
@@ -2228,7 +2741,7 @@ function Root() {
               </Text>
             </View>
           )}
-          {!hasThisWeekLog && canLogThisWeek && <View style={{ backgroundColor: '#1c1c3a55', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+          {!hasThisWeekLog && canLogThisWeek && <View style={{ backgroundColor: COLORS.surface, borderWidth: 1, borderColor: '#ffffff08', borderTopColor: '#ffffff35', borderRadius: 16, padding: 18, marginBottom: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 16 }}>Log Sets</Text>
@@ -2301,8 +2814,9 @@ function Root() {
                 </View>
               );
             })()}
-            <TouchableOpacity
+            <AnimatedPress
               style={{ backgroundColor: sessionSets.every(s => s.completed) ? COLORS.accent : '#2a2a4a', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 6 }}
+              scaleDown={0.96}
               onPress={() => {
                 const completed = sessionSets.filter(s => s.completed);
                 if (completed.length === 0 || !sessionSets.every(s => s.completed)) return;
@@ -2334,7 +2848,7 @@ function Root() {
               }}
             >
               <Text style={{ color: sessionSets.every(s => s.completed) ? COLORS.text : COLORS.muted, fontWeight: 'bold', fontSize: 15 }}>Save Sets</Text>
-            </TouchableOpacity>
+            </AnimatedPress>
           </View>}
 
           {/* Log History */}
@@ -2379,7 +2893,7 @@ function Root() {
               const isPR = volume > 0 && volume === Math.max(...allVolumes);
               const isFirst = i === 0;
               return (
-                <View key={i} style={{ backgroundColor: '#1c1c3a88', borderWidth: 1, borderColor: '#ffffff0d', borderRadius: 14, padding: 14, marginBottom: 10 }}>
+                <View key={i} style={{ backgroundColor: COLORS.surface, borderWidth: 1, borderColor: '#ffffff08', borderTopColor: '#ffffff35', borderRadius: 16, padding: 18, marginBottom: 14 }}>
                   {/* Header row */}
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
@@ -2390,7 +2904,7 @@ function Root() {
                       onPress={() => { setEditingEntryIndex(i); setEditSets((entry.sets || []).map(s => ({ weight: s.weight, reps: s.reps }))); }}
                       style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}
                     >
-                      <Text style={{ color: '#4a90e2', fontSize: 12, fontWeight: '600' }}>Edit</Text>
+                      <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '600' }}>Edit</Text>
                     </TouchableOpacity>
                   </View>
                   {/* Badges */}
@@ -2461,7 +2975,7 @@ function Root() {
                   >
                     <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700' }}>←</Text>
                   </TouchableOpacity>
-                  <View style={{ backgroundColor: '#1c1c3a', borderRadius: 20, paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center', borderWidth: 1, borderColor: '#ffffff10', width: 220 }}>
+                  <View style={{ backgroundColor: COLORS.card, borderRadius: 20, paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center', borderWidth: 1, borderColor: '#ffffff18', width: 220 }}>
                     <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 20 }}>SELECT REPS</Text>
                     <ScrollView style={{ maxHeight: 300, width: '100%' }} showsVerticalScrollIndicator={false}>
                       {repOptions.map(r => {
@@ -2539,40 +3053,147 @@ function Root() {
           return (
             <Modal visible={weightPickerVisible} transparent animationType="slide">
               <TouchableOpacity activeOpacity={1} style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'flex-end' }} onPress={() => { setTempWeightVal(null); setWeightPickerVisible(false); }}>
-                <TouchableOpacity activeOpacity={1} onPress={() => {}} style={{ marginHorizontal: 10, marginBottom: 10, backgroundColor: '#1c1c3a', borderRadius: 24, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.4, shadowRadius: 20 }}>
-                  <View style={{ paddingHorizontal: 24, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#ffffff10', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '600' }}>Select Weight</Text>
-                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                      <TouchableOpacity onPress={() => {
-                        const s = [...sessionSets];
-                        s[weightPickerIndex] = { ...s[weightPickerIndex], weight: String(tempWeightVal ?? selectedVal) };
-                        s[weightPickerIndex] = { ...s[weightPickerIndex], completed: true };
-                        setSessionSets(s);
-                        setTempWeightVal(null);
-                        setWeightPickerVisible(false);
-                        if (restTimerEnabled) {
-                          const suggested = getRestSuggestion(selectedExercise);
-                          setRestingForExercise(selectedExercise);
-                          setRestTimerDuration(suggested);
-                          setRestTimerRemaining(suggested);
-                          setRestTimerRunning(true);
-                        }
-                        if (s.every(set => set.completed)) {
-                          const completed = s.filter(set => set.completed);
-                          const maxWeight = Math.max(...completed.map(set => parseFloat(set.weight) || 0));
-                          const bestSet = completed.find(set => parseFloat(set.weight) === maxWeight) || completed[completed.length - 1];
-                          const key = logKey(selectedDay.day, selectedExercise);
-                          const existing = logs[key] || [];
-                          const allSets = s.map((set, idx) => set.completed ? { weight: set.weight, reps: set.reps } : (existing[existing.length - 1]?.sets?.[idx] || { weight: '', reps: '' }));
-                          const newEntry = { programWeek: currentWeek, weight: String(maxWeight), reps: bestSet.reps, sets: allSets };
-                          const updatedLogs = { ...logs, [key]: [...existing, newEntry] };
-                          setLogs(updatedLogs);
-                          if (user) updateDoc(doc(db, 'users', user.email), { logs: updatedLogs });
-                        }
-                      }} style={{ backgroundColor: '#4ade80', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 }}>
-                        <Text style={{ color: '#000', fontSize: 13, fontWeight: '700' }}>Complete</Text>
-                      </TouchableOpacity>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+
+                  {/* ── Plate Calculator (Android only, separate card) ── */}
+                  {Platform.OS === 'android' && (() => {
+                    const totalWeight = platesToWeight(barPlates);
+                    const scrollToWeight = (w) => {
+                      const idx = steps.findIndex(s => Math.abs(s - w) < 0.01);
+                      if (idx !== -1) weightListRef.current?.scrollToIndex({ index: Math.max(0, idx - 2), animated: true });
+                    };
+                    const addPlate = (p) => {
+                      const next = [...barPlates, p];
+                      setBarPlates(next);
+                      const w = platesToWeight(next);
+                      setTempWeightVal(w);
+                      scrollToWeight(w);
+                    };
+                    const removeLastOf = (p) => {
+                      const idx = [...barPlates].lastIndexOf(p);
+                      if (idx === -1) return;
+                      const next = barPlates.filter((_, i) => i !== idx);
+                      setBarPlates(next);
+                      const w = platesToWeight(next);
+                      setTempWeightVal(w);
+                      scrollToWeight(w);
+                    };
+                    return (
+                      <View style={{ marginHorizontal: 40, marginBottom: 10, backgroundColor: COLORS.card, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#ffffff10', borderTopColor: '#ffffff28', shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.35, shadowRadius: 16 }}>
+                        {/* Header */}
+                        <View style={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.9 }}>PLATE CALCULATOR</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            {barPlates.length > 0 && (
+                              <TouchableOpacity onPress={() => { setBarPlates([]); setTempWeightVal(45); }} activeOpacity={0.7}
+                                style={{ backgroundColor: '#ffffff15', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#ffffff25' }}>
+                                <Text style={{ color: COLORS.text, fontSize: 12, fontWeight: '700' }}>Clear</Text>
+                              </TouchableOpacity>
+                            )}
+                            <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '900' }}>
+                              {totalWeight}<Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '500' }}> lbs</Text>
+                            </Text>
+                          </View>
+                        </View>
+                        {/* Body: barbell left, plate grid right */}
+                        <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingBottom: 10, gap: 10, alignItems: 'center' }}>
+                          {/* Left: barbell */}
+                          <View style={{ width: 120, height: 90, justifyContent: 'center' }}>
+                            {/* Sleeve (thin end, left of collar) */}
+                            <View style={{ position: 'absolute', left: 0, width: 16, height: 7, backgroundColor: '#b0b0b0' }} />
+                            {/* Main bar (right of collar) */}
+                            <View style={{ position: 'absolute', left: 13, right: 0, height: 14, backgroundColor: '#b0b0b0', borderTopRightRadius: 0, borderBottomRightRadius: 0 }} />
+                            {/* Left end cap */}
+                            <View style={{ position: 'absolute', left: 13, width: 6, height: 18, backgroundColor: '#888', borderRadius: 2 }} />
+                            {/* Plates stacked outward from left collar */}
+                            <View style={{ position: 'absolute', left: 19, flexDirection: 'row', alignItems: 'center' }}>
+                              {[...barPlates].sort((a, b) => b - a).map((p, i) => (
+                                <TouchableOpacity key={i} onPress={() => removeLastOf(p)} activeOpacity={0.7}>
+                                  <View style={{ width: PLATE_W[p] + 2, height: PLATE_H[p], backgroundColor: PLATE_COLORS[p], borderRadius: 4, marginRight: 0.5, borderWidth: 1, borderColor: '#ffffff35' }} />
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                            {barPlates.length === 0 && (
+                              <Text style={{ color: '#ffffff30', fontSize: 10, position: 'absolute', left: 14, top: '60%' }}>empty</Text>
+                            )}
+                          </View>
+                          {/* Right: plate buttons — 2 rows, proportional size */}
+                          <View style={{ flex: 1, gap: 2 }}>
+                            {/* Row 1: 45 and 5 */}
+                            <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'flex-start', alignItems: 'flex-end' }}>
+                              {[45, 5].map(p => {
+                                const size = p === 45 ? 78 : 46;
+                                const hole = 14;
+                                const fs = p === 45 ? 12 : 9;
+                                return (
+                                  <TouchableOpacity key={p} onPress={() => addPlate(p)} activeOpacity={0.72}
+                                    style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: PLATE_COLORS[p], alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#ffffff30', shadowColor: PLATE_COLORS[p], shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 }}>
+                                    <View style={{ position: 'absolute', width: hole, height: hole, borderRadius: hole / 2, backgroundColor: COLORS.card }} />
+                                    <Text style={{ position: 'absolute', top: Math.round(size * 0.1), color: '#fff', fontSize: fs, fontWeight: '900', textShadowColor: '#000', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>{p} lbs</Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                            {/* Row 2: 25, 10, 2.5 */}
+                            <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'flex-start' }}>
+                              {[25, 10, 2.5].map(p => {
+                                const size = p === 25 ? 62 : p === 10 ? 52 : 40;
+                                const hole = 14;
+                                const fs = p === 25 ? 10 : p === 10 ? 9 : 8;
+                                return (
+                                  <TouchableOpacity key={p} onPress={() => addPlate(p)} activeOpacity={0.72}
+                                    style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: PLATE_COLORS[p], alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#ffffff30', shadowColor: PLATE_COLORS[p], shadowOpacity: 0.4, shadowRadius: 6, elevation: 3 }}>
+                                    <View style={{ position: 'absolute', width: hole, height: hole, borderRadius: hole / 2, backgroundColor: COLORS.card }} />
+                                    <Text style={{ position: 'absolute', top: Math.round(size * 0.1), color: '#fff', fontSize: fs, fontWeight: '900', textShadowColor: '#000', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>{p} lbs</Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })()}
+
+                  {/* ── Weight Picker Card ── */}
+                  <View style={{ marginHorizontal: 10, marginBottom: 10, backgroundColor: COLORS.card, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#ffffff10', borderTopColor: '#ffffff28', shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.4, shadowRadius: 20 }}>
+                    <View style={{ paddingHorizontal: 24, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#ffffff10', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '600' }}>Select Weight</Text>
+                      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                        <TouchableOpacity onPress={() => {
+                          const s = [...sessionSets];
+                          s[weightPickerIndex] = { ...s[weightPickerIndex], weight: String(tempWeightVal ?? selectedVal) };
+                          s[weightPickerIndex] = { ...s[weightPickerIndex], completed: true };
+                          setSessionSets(s);
+                          setTempWeightVal(null);
+                          const nextIdx = s.findIndex((set, i) => i > weightPickerIndex && !set.completed);
+                          if (nextIdx !== -1) {
+                            keepPlatesRef.current = true;
+                            setTimeout(() => { setWeightPickerIndex(nextIdx); setWeightPickerVisible(true); }, 300);
+                          }
+                          setWeightPickerVisible(false);
+                          if (restTimerEnabled) {
+                            const suggested = getRestSuggestion(selectedExercise);
+                            setRestingForExercise(selectedExercise);
+                            setRestTimerDuration(suggested);
+                            setRestTimerRemaining(suggested);
+                            setRestTimerRunning(true);
+                          }
+                          if (s.every(set => set.completed)) {
+                            const completed = s.filter(set => set.completed);
+                            const maxWeight = Math.max(...completed.map(set => parseFloat(set.weight) || 0));
+                            const bestSet = completed.find(set => parseFloat(set.weight) === maxWeight) || completed[completed.length - 1];
+                            const key = logKey(selectedDay.day, selectedExercise);
+                            const existing = logs[key] || [];
+                            const allSets = s.map((set, idx) => set.completed ? { weight: set.weight, reps: set.reps } : (existing[existing.length - 1]?.sets?.[idx] || { weight: '', reps: '' }));
+                            const newEntry = { programWeek: currentWeek, weight: String(maxWeight), reps: bestSet.reps, sets: allSets };
+                            const updatedLogs = { ...logs, [key]: [...existing, newEntry] };
+                            setLogs(updatedLogs);
+                            if (user) updateDoc(doc(db, 'users', user.email), { logs: updatedLogs });
+                          }
+                        }} style={{ backgroundColor: '#4ade80', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 }}>
+                          <Text style={{ color: '#000', fontSize: 13, fontWeight: '700' }}>Complete</Text>
+                        </TouchableOpacity>
                         <TouchableOpacity onPress={() => {
                           if (tempWeightVal !== null) {
                             const s = [...sessionSets];
@@ -2588,27 +3209,73 @@ function Root() {
                         </TouchableOpacity>
                       </View>
                     </View>
+                    {prevSetWeight ? (
+                      <View style={{ paddingHorizontal: 20, paddingVertical: 8, backgroundColor: '#ffffff08', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '600' }}>Previous Set</Text>
+                        <Text style={{ color: COLORS.accent, fontSize: 12, fontWeight: '700' }}>{prevSetWeight} lbs</Text>
+                      </View>
+                    ) : null}
+                    {Platform.OS === 'android' ? (() => {
+                      const activeVal = tempWeightVal ?? selectedVal;
+                      const milestones = { 135: '1 plate', 225: '2 plates', 315: '3 plates', 405: '4 plates', 585: '5 plates' };
+                      const selectedIdx = steps.findIndex(w => Math.abs(w - activeVal) < 0.01);
+                      return (
+                        <FlatList
+                          ref={weightListRef}
+                          data={steps}
+                          keyExtractor={(w) => String(w)}
+                          style={{ height: 220 }}
+                          showsVerticalScrollIndicator={false}
+                          getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
+                          initialScrollIndex={Math.max(0, selectedIdx - 2)}
+                          onMomentumScrollEnd={(e) => {
+                            const scrollY = e.nativeEvent.contentOffset.y;
+                            const idx = Math.min(Math.max(Math.round(scrollY / 52) + 2, 0), steps.length - 1);
+                            const newW = steps[idx];
+                            setTempWeightVal(newW);
+                            setBarPlates(newW >= 45 ? weightToPlates(newW) : []);
+                          }}
+                          onScrollEndDrag={(e) => {
+                            const scrollY = e.nativeEvent.contentOffset.y;
+                            const idx = Math.min(Math.max(Math.round(scrollY / 52) + 2, 0), steps.length - 1);
+                            const newW = steps[idx];
+                            setTempWeightVal(newW);
+                            setBarPlates(newW >= 45 ? weightToPlates(newW) : []);
+                          }}
+                          renderItem={({ item: w }) => {
+                            const isSelected = Math.abs(w - (tempWeightVal ?? selectedVal)) < 0.01;
+                            const label = `${w % 1 === 0 ? w : w.toFixed(1)} lbs`;
+                            const milestone = milestones[w];
+                            return (
+                              <TouchableOpacity
+                                onPress={() => setTempWeightVal(w)}
+                                style={{ height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, backgroundColor: isSelected ? '#ffffff0e' : 'transparent', borderLeftWidth: isSelected ? 3 : 0, borderLeftColor: COLORS.accent }}
+                              >
+                                <Text style={{ color: isSelected ? COLORS.text : COLORS.muted, fontSize: isSelected ? 18 : 16, fontWeight: isSelected ? '800' : '400' }}>{label}</Text>
+                                {milestone && <Text style={{ color: isSelected ? COLORS.accent : '#ffffff30', fontSize: 12, fontWeight: '600' }}>{milestone}</Text>}
+                              </TouchableOpacity>
+                            );
+                          }}
+                        />
+                      );
+                    })() : (
+                      <Picker
+                        selectedValue={tempWeightVal ?? selectedVal}
+                        onValueChange={(val) => setTempWeightVal(val)}
+                        itemStyle={{ color: COLORS.text, fontSize: 22 }}
+                        style={{ backgroundColor: COLORS.card }}
+                      >
+                        {steps.map(w => (
+                          <Picker.Item key={w} label={(() => {
+                            const base = `${w % 1 === 0 ? w : w.toFixed(1)} lbs`;
+                            const milestones = { 135: '— 1 plate', 225: '— 2 plates', 315: '— 3 plates', 405: '— 4 plates', 585: '— 5 plates' };
+                            return milestones[w] ? `${base}  ${milestones[w]}` : base;
+                          })()} value={w} />
+                        ))}
+                      </Picker>
+                    )}
                   </View>
-                  {prevSetWeight ? (
-                    <View style={{ paddingHorizontal: 20, paddingVertical: 8, backgroundColor: '#ffffff08', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '600' }}>Previous Set</Text>
-                      <Text style={{ color: COLORS.accent, fontSize: 12, fontWeight: '700' }}>{prevSetWeight} lbs</Text>
-                    </View>
-                  ) : null}
-                  <Picker
-                    selectedValue={tempWeightVal ?? selectedVal}
-                    onValueChange={(val) => setTempWeightVal(val)}
-                    itemStyle={{ color: COLORS.text, fontSize: 22 }}
-                    style={{ backgroundColor: '#1c1c3a' }}
-                  >
-                    {steps.map(w => (
-                      <Picker.Item key={w} label={(() => {
-                        const base = `${w % 1 === 0 ? w : w.toFixed(1)} lbs`;
-                        const milestones = { 135: '— 1 plate', 225: '— 2 plates', 315: '— 3 plates', 405: '— 4 plates', 585: '— 5 plates' };
-                        return milestones[w] ? `${base}  ${milestones[w]}` : base;
-                      })()} value={w} />
-                    ))}
-                  </Picker>
+
                 </TouchableOpacity>
               </TouchableOpacity>
             </Modal>
@@ -2681,22 +3348,47 @@ function Root() {
         {(shouldShowCompleteBtn || showCompleteButton) && (() => {
           const key = `${selectedDay?.day}|${currentWeek}`;
           const done = !!completedWorkouts[key];
+
+          const markDone = () => {
+            if (done) { setShowDayComplete(true); return; }
+            const updated = { ...completedWorkouts, [key]: true };
+            setCompletedWorkouts(updated);
+            if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updated });
+            setShowCompleteButton(false);
+            setShowDayComplete(true);
+            setTimeout(() => {
+              setWorkoutChip(true);
+              Animated.parallel([
+                Animated.timing(chipFade, { toValue: 1, duration: 350, useNativeDriver: true }),
+                Animated.spring(chipScale, { toValue: 1, speed: 60, bounciness: 8, useNativeDriver: true }),
+              ]).start();
+            }, 2000);
+          };
+
+          if (done && workoutChip) {
+            return (
+              <Animated.View style={{ position: 'absolute', bottom: 32, left: 0, right: 0, alignItems: 'center', opacity: chipFade, transform: [{ scale: chipScale }] }}>
+                <TouchableOpacity onPress={() => setShowDayComplete(true)} activeOpacity={0.8}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.deep, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 10, borderWidth: 1, borderColor: '#4ade8040', borderTopColor: '#4ade8070', shadowColor: '#4ade80', shadowOpacity: 0.2, shadowRadius: 12, elevation: 6 }}>
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#4ade80', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#000', fontSize: 11, fontWeight: '900', lineHeight: 14 }}>✓</Text>
+                  </View>
+                  <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Workout Complete</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            );
+          }
+
           return (
             <View style={{ position: 'absolute', bottom: 32, left: 24, right: 24 }}>
-              <TouchableOpacity
-                style={{ backgroundColor: done ? '#1a3a1a' : '#4ade80', borderRadius: 16, paddingVertical: 18, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, borderWidth: done ? 1 : 0, borderColor: '#4ade8066', shadowColor: '#4ade80', shadowOpacity: done ? 0.15 : 0.5, shadowRadius: 16, elevation: 10 }}
-                onPress={() => {
-                  if (done) { setShowDayComplete(true); return; }
-                  const updated = { ...completedWorkouts, [key]: true };
-                  setCompletedWorkouts(updated);
-                  if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updated });
-                  setShowCompleteButton(false);
-                  setShowDayComplete(true);
-                }}
+              <AnimatedPress
+                style={{ backgroundColor: done ? '#12221a' : '#4ade80', borderRadius: 16, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, borderWidth: done ? 1 : 0, borderColor: '#4ade8055', shadowColor: '#4ade80', shadowOpacity: done ? 0.1 : 0.35, shadowRadius: 14, elevation: done ? 4 : 8 }}
+                onPress={markDone}
+                scaleDown={0.95}
               >
-                <Text style={{ color: done ? '#4ade80' : '#000', fontWeight: '800', fontSize: 17 }}>{done ? 'Workout Completed' : 'Complete Workout'}</Text>
-                <Text style={{ color: done ? '#4ade80' : '#000', fontSize: 17, fontWeight: '800' }}>✓</Text>
-              </TouchableOpacity>
+                <Text style={{ color: done ? '#4ade80' : '#000', fontWeight: '800', fontSize: 16 }}>{done ? 'Workout Completed' : 'Complete Workout'}</Text>
+                <Text style={{ color: done ? '#4ade80' : '#000', fontSize: 16, fontWeight: '800' }}>✓</Text>
+              </AnimatedPress>
             </View>
           );
         })()}
@@ -2713,14 +3405,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
     paddingTop: 20,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   title: {
-    fontSize: 26,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: '900',
     color: COLORS.text,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
+    letterSpacing: -0.5,
   },
   subtitle: {
     color: COLORS.muted,
@@ -2765,9 +3458,9 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: 'bold' },
   authError: { color: '#ff6b6b', fontSize: 13, marginBottom: 12, textAlign: 'center' },
-  authField: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e1e32', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 14 },
+  authField: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: '#ffffff12', borderTopColor: '#ffffff20', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 16, marginBottom: 16 },
   authInput: { flex: 1, color: COLORS.text, fontSize: 15 },
-  choices: { gap: 10 },
+  choices: { gap: 14 },
   choiceBtn: {
     backgroundColor: COLORS.input,
     borderRadius: 10,
@@ -2778,7 +3471,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
   choiceText: { color: COLORS.text, fontSize: 16 },
-  goalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c3a', borderRadius: 18, padding: 18, gap: 14, borderWidth: 1, borderColor: '#ffffff20', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, marginBottom: 4 },
+  goalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, borderRadius: 18, padding: 20, gap: 16, borderWidth: 1, borderColor: '#ffffff08', borderTopColor: '#ffffff35', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.55, shadowRadius: 18, marginBottom: 0 },
   goalEmoji: { fontSize: 32 },
   goalTitle: { color: COLORS.text, fontSize: 17, fontWeight: 'bold' },
   goalSubtitle: { color: COLORS.muted, fontSize: 13, marginTop: 2 },
@@ -2786,26 +3479,40 @@ const styles = StyleSheet.create({
   fieldLabel: { color: COLORS.muted, fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 4 },
   mealFood: { color: COLORS.muted, fontSize: 13, marginTop: 4, paddingLeft: 4 },
   card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#ffffff08',
+    borderTopColor: '#ffffff35',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    elevation: 6,
   },
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dayTitle: { color: COLORS.accent, fontWeight: 'bold', fontSize: 15, flex: 1 },
+  dayTitle: { color: COLORS.text, fontWeight: '700', fontSize: 16, flex: 1 },
   chevron: { color: COLORS.muted, fontSize: 24 },
-  exerciseCount: { color: COLORS.muted, fontSize: 13, marginTop: 4 },
+  exerciseCount: { color: '#4a4a6a', fontSize: 12, marginTop: 3 },
   backBtn: { marginBottom: 12, paddingRight: 80, paddingVertical: 16 },
   backText: { color: COLORS.text, fontSize: 44, fontWeight: '700', lineHeight: 48 },
   exerciseCard: {
-    backgroundColor: '#1c1c3a55',
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: '#ffffff0d',
-    borderRadius: 12,
-    padding: 11,
-    marginBottom: 10,
+    borderColor: '#ffffff0a',
+    borderTopColor: '#ffffff30',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  exerciseCardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  exerciseCardTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   stretchGrid: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   stretchItem: { flexDirection: 'row', alignItems: 'center', gap: 10, width: '47%', backgroundColor: COLORS.input, borderRadius: 10, padding: 10 },
   stretchNumber: { color: COLORS.muted, fontSize: 16, fontWeight: 'bold', width: 22, textAlign: 'center' },
@@ -2818,7 +3525,7 @@ const styles = StyleSheet.create({
   exImgEmoji: { fontSize: 30 },
   exImg: { width: 120, height: 76, borderRadius: 8, overflow: 'hidden' },
   progressImgRow: { alignItems: 'center', marginBottom: 16 },
-  progressHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
   title2: { fontSize: 18, fontWeight: 'bold', color: COLORS.text },
   subtitle2: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
   tableContainer: { backgroundColor: COLORS.card, borderRadius: 12, overflow: 'hidden', marginBottom: 16 },
@@ -2833,10 +3540,10 @@ const styles = StyleSheet.create({
   dateCol: { flex: 1, textAlign: 'right' },
   weightValue: { fontWeight: 'bold', color: COLORS.text },
   entryNum: { color: COLORS.muted, fontSize: 11 },
-  exerciseName: { color: COLORS.text, fontSize: 13, fontWeight: 'bold', marginBottom: 2 },
+  exerciseName: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginBottom: 4, letterSpacing: -0.2 },
   pillRow: { flexDirection: 'row', gap: 4, marginBottom: 4 },
-  pill: { backgroundColor: '#3a3a6a', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 },
-  pillText: { color: '#d0d0f0', fontSize: 11, fontWeight: '600' },
+  pill: { backgroundColor: '#1e1e44', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: '#ffffff0a' },
+  pillText: { color: '#8888b8', fontSize: 11, fontWeight: '600' },
   logCount: { color: COLORS.muted, fontSize: 12, marginBottom: 10 },
   exerciseBtns: { flexDirection: 'row', gap: 8 },
   logBtn: {
@@ -2880,13 +3587,21 @@ const styles = StyleSheet.create({
   modalSubtitle: { color: COLORS.muted, fontSize: 14, marginBottom: 16 },
   cancelBtn: { marginTop: 10, alignItems: 'center', padding: 10 },
   cancelText: { color: COLORS.muted, fontSize: 15 },
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   statCard: {
     flex: 1,
     backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ffffff08',
+    borderTopColor: '#ffffff32',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 4,
   },
   statValue: { color: COLORS.text, fontSize: 20, fontWeight: 'bold' },
   statLabel: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
@@ -2920,7 +3635,7 @@ const styles = StyleSheet.create({
   },
   logWeek: { color: COLORS.muted, fontSize: 14 },
   logWeight: { color: COLORS.text, fontWeight: 'bold', fontSize: 14 },
-  sectionLabel: { color: COLORS.text, fontWeight: 'bold', fontSize: 15, marginBottom: 8 },
+  sectionLabel: { color: COLORS.text, fontWeight: '700', fontSize: 13, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 14, marginTop: 4, borderLeftWidth: 2, borderLeftColor: COLORS.accent, paddingLeft: 8 },
   restBanner: {
     backgroundColor: '#1a1a2e',
     borderRadius: 14,
@@ -2952,10 +3667,10 @@ export default function App() {
   return (
     <ErrorBoundary>
       <LinearGradient
-        colors={['#0d0d1a', '#090910', '#050508']}
-        locations={[0, 0.6, 1]}
-        start={{ x: 0.4, y: 0 }}
-        end={{ x: 0.6, y: 1 }}
+        colors={['#1a0508', '#0a0a0f', '#0a0a0f']}
+        locations={[0, 0.18, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
         style={{ flex: 1 }}
       >
         <Root />

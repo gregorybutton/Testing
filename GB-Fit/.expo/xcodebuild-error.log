@@ -1,0 +1,7 @@
+** BUILD FAILED **
+
+
+The following build commands failed:
+	PhaseScriptExecution [CP-User]\ Generate\ Specs /Users/gregorybutton/Library/Developer/Xcode/DerivedData/GBFit-fpqezdnksqnkwfhifolkvpshxiax/Build/Intermediates.noindex/Pods.build/Debug-iphonesimulator/ReactCodegen.build/Script-46EB2E00018610.sh (in target 'ReactCodegen' from project 'Pods')
+	Building workspace GBFit with scheme GBFit and configuration Debug
+(2 failures)

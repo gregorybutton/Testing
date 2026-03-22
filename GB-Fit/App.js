@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from './firebaseConfig';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Picker } from '@react-native-picker/picker';
 import {
   Alert,
   FlatList,
@@ -61,9 +62,9 @@ const QUESTIONS = [
 ];
 
 const GOAL_META = {
-  'Building Muscle - Men':   { emoji: '💪', subtitle: 'Track workouts' },
-  'Building Muscle - Women': { emoji: '💪', subtitle: 'Track workouts' },
-  'Get a Nutrition Plan':    { emoji: '🥗', subtitle: 'Calculate calories' },
+  'Building Muscle - Men':   { icon: 'M', iconColor: '#ff6b6b', iconGradient: ['#e63946', '#7b1fa2'], subtitle: 'Track workouts' },
+  'Building Muscle - Women': { icon: 'M', iconColor: '#ff6b6b', iconGradient: ['#e63946', '#7b1fa2'], subtitle: 'Track workouts' },
+  'Get a Nutrition Plan':    { icon: 'N', iconColor: '#69f0ae', iconGradient: ['#2ecc71', '#0097a7'], subtitle: 'Calculate calories' },
 };
 
 const EXERCISE_NOTES = {
@@ -127,6 +128,13 @@ const EXERCISE_NOTES = {
   'Pec Deck':                  'Adjust the seat so handles are at chest height. Keep a slight bend in the elbows and lead with your elbows — not your hands. Squeeze the chest hard at the peak contraction, then return slowly for a full stretch. Don\'t let the weight snap back.',
   'Bent Over Barbell Row':     'Hinge at the hips until torso is roughly parallel to the floor, slight knee bend. Brace your core and keep your back flat throughout. Pull the bar to your lower chest, driving elbows back and squeezing the shoulder blades together at the top. Lower with control — don\'t let your back round on the descent.',
   'Cable Tricep Pushdown':    'Set the cable to a high pulley with a rope or bar attachment. Keep elbows tucked at your sides throughout — they should not move. Push down to full extension and squeeze the triceps hard at the bottom. Return slowly, allowing a full stretch at the top before the next rep.',
+  'Flat Bench Press':         'Arch naturally, feet flat on the floor. Grip slightly wider than shoulder-width. Lower the bar to your lower chest with elbows at ~75°. Press in a slight arc back toward the rack. Keep shoulder blades pinched and depressed throughout.',
+  'EZ Bar Seated Curl':       'Sit tall with back supported. Grip the angled part of the bar, elbows pinned at your sides. Curl to full contraction and squeeze the bicep at the top. Lower slowly for maximum tension — don\'t let the bar drop.',
+  'Glute Bridge':             'Lie on your back with knees bent and feet flat, hip-width apart. Drive through your heels and squeeze your glutes hard at the top — hips fully extended. Hold briefly at the top, then lower with control. Keep core braced throughout.',
+  'Step Ups':                 'Stand in front of a bench or box. Step up with one foot, driving through the heel to fully extend the leg. Bring the other foot up to meet it. Step back down with control. Keep torso upright and avoid pushing off the back foot.',
+  'Cable Glute Kickbacks':    'Attach an ankle strap to a low cable. Hinge slightly at the hips and brace your core. Kick the leg back and up, squeezing the glute hard at the top. Lower with control — don\'t let momentum take over. Keep the movement isolated to the hip.',
+  'Hip Abduction Machine':    'Sit tall with back against the pad and legs against the outer pads. Push knees outward in a controlled motion, squeezing the glutes and outer hips at peak contraction. Return slowly — don\'t let the weight slam back.',
+  '45° Back Extensions':      'Position yourself on the 45° back extension bench with hips at the edge of the pad. Hinge forward at the hips with a neutral spine, lowering until you feel a hamstring stretch. Drive hips forward and squeeze glutes to return to the starting position. Avoid hyperextending at the top.',
 };
 
 const EXERCISE_WEIGHT_RANGES = {
@@ -480,6 +488,7 @@ function Root() {
   const [sessionSets, setSessionSets] = useState([]);
   const [weightPickerVisible, setWeightPickerVisible] = useState(false);
   const [weightPickerIndex, setWeightPickerIndex] = useState(null);
+  const [tempWeightVal, setTempWeightVal] = useState(null);
   const weightListRef = useRef(null);
   const [repsPickerVisible, setRepsPickerVisible] = useState(false);
   const [repsPickerIndex, setRepsPickerIndex] = useState(null);
@@ -813,12 +822,12 @@ function Root() {
   function LogoutBtn() {
     return (
       <>
-        <TouchableOpacity onPress={() => setMenuVisible(true)} style={{ position: 'absolute', top: 8, right: 0, padding: 20, zIndex: 10 }}>
+        <TouchableOpacity onPress={() => setMenuVisible(true)} style={{ position: 'absolute', top: 24, right: 0, padding: 20, zIndex: 10 }}>
           <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '700', letterSpacing: 2 }}>⋯</Text>
         </TouchableOpacity>
         <Modal visible={menuVisible} transparent animationType="fade">
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuVisible(false)}>
-            <View style={{ position: 'absolute', top: 10, right: 8, backgroundColor: '#1c1c3a', borderRadius: 12, borderWidth: 1, borderColor: '#ffffff15', overflow: 'hidden', minWidth: 160 }}>
+            <View style={{ position: 'absolute', top: 60, right: 8, backgroundColor: '#1c1c3a', borderRadius: 12, borderWidth: 1, borderColor: '#ffffff15', overflow: 'hidden', minWidth: 160 }}>
               <TouchableOpacity
                 onPress={() => { setMenuVisible(false); setSettingsFrom(screen); setScreen('settings'); }}
                 style={{ paddingVertical: 14, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: '#ffffff10' }}
@@ -853,7 +862,7 @@ function Root() {
               shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 20,
               elevation: 12,
             }}>
-              <Text style={{ fontSize: 38 }}>🏋️</Text>
+              <Text style={{ fontSize: 32, fontWeight: 'bold', color: COLORS.accent }}>GB</Text>
             </View>
           </View>
 
@@ -962,7 +971,7 @@ function Root() {
               shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 20,
               elevation: 12,
             }}>
-              <Text style={{ fontSize: 38 }}>🏋️</Text>
+              <Text style={{ fontSize: 32, fontWeight: 'bold', color: COLORS.accent }}>GB</Text>
             </View>
           </View>
 
@@ -971,9 +980,9 @@ function Root() {
 
           {/* Email field */}
           <View style={styles.authField}>
-            <Text style={{ color: COLORS.muted, fontSize: 16, marginRight: 12 }}>✉</Text>
+            <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '600', marginRight: 12 }}>Email</Text>
             <TextInput
-              style={styles.authInput}
+              style={[styles.authInput, Platform.OS === 'ios' && { textAlign: 'left', paddingLeft: 0 }]}
               placeholder="Email"
               placeholderTextColor={COLORS.muted}
               value={authForm.email}
@@ -985,7 +994,7 @@ function Root() {
 
           {/* Password field */}
           <View style={styles.authField}>
-            <Text style={{ color: COLORS.muted, fontSize: 16, marginRight: 12 }}>🔒</Text>
+            <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '600', marginRight: 12 }}>Password</Text>
             <TextInput
               style={[styles.authInput, { flex: 1 }]}
               placeholder="Password"
@@ -1115,7 +1124,17 @@ function Root() {
               const label = opt.startsWith('Building Muscle') ? 'Build Muscle' : opt;
               return (
                 <TouchableOpacity key={opt} style={styles.goalCard} onPress={() => handleAnswer(opt)}>
-                  <Text style={styles.goalEmoji}>{meta?.emoji}</Text>
+                  <LinearGradient
+                    colors={meta?.iconGradient}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                    style={{
+                      width: 54, height: 54, borderRadius: 16,
+                      justifyContent: 'center', alignItems: 'center',
+                      marginRight: 14,
+                      shadowColor: meta?.iconColor, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.7, shadowRadius: 10,
+                    }}>
+                    <Text style={{ fontSize: 24, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>{meta?.icon}</Text>
+                  </LinearGradient>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.goalTitle}>{label}</Text>
                     <Text style={styles.goalSubtitle}>{meta?.subtitle}</Text>
@@ -2236,65 +2255,57 @@ function Root() {
                 <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '600' }}>Reset</Text>
               </TouchableOpacity>
             </View>
-            {sessionSets.map((set, i) => {
-              const locked = i > 0 && !sessionSets[i - 1].completed;
-              return (
-              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10, opacity: locked ? 0.35 : 1 }}>
-                <View style={{ backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 3, minWidth: 44, alignItems: 'center' }}>
-                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>SET {i + 1}</Text>
-                </View>
-                {set.completed ? (
-                  <>
-                    <Text style={{ color: COLORS.text, fontSize: 13, flex: 1 }}>{set.weight} lbs × {set.reps} reps</Text>
-                    <View style={{ backgroundColor: '#4ade8022', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
-                      <Text style={{ color: '#4ade80', fontSize: 12, fontWeight: '700' }}>✓ Done</Text>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, width: 62, alignItems: 'center' }}
-                      onPress={() => { if (!locked) { setWeightPickerIndex(i); setWeightPickerVisible(true); } }}
-                    >
-                      <Text style={{ color: set.weight ? COLORS.text : COLORS.muted, fontSize: 13 }}>{set.weight || 'lbs'}</Text>
-                    </TouchableOpacity>
-                    <Text style={{ color: COLORS.muted, fontSize: 11 }}>lbs ×</Text>
-                    <TouchableOpacity
-                      style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 6, width: 42, alignItems: 'center' }}
-                      onPress={() => { if (!locked) { setRepsPickerIndex(i); setRepsPickerVisible(true); } }}
-                    >
-                      <Text style={{ color: set.reps ? COLORS.text : COLORS.muted, fontSize: 13 }}>{set.reps || '—'}</Text>
-                    </TouchableOpacity>
-                    <Text style={{ color: COLORS.muted, fontSize: 11 }}>reps</Text>
-                    <TouchableOpacity
-                      style={{ backgroundColor: set.weight && set.reps ? '#4ade80' : '#2a2a4a', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
-                      onPress={() => {
-                        if (set.weight && set.reps) {
-                          const s = [...sessionSets];
-                          s[i] = { ...s[i], completed: true };
-                          setSessionSets(s);
-                          if (restTimerEnabled) {
-                            const suggested = getRestSuggestion(selectedExercise);
-                            setRestingForExercise(selectedExercise);
-                            setRestTimerDuration(suggested);
-                            setRestTimerRemaining(suggested);
-                            setRestTimerRunning(true);
-                          }
-                        }
-                      }}
-                    >
-                      <Text style={{ color: set.weight && set.reps ? '#000' : COLORS.muted, fontSize: 12, fontWeight: '700' }}>Confirm</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
+            {/* Completed sets summary */}
+            {sessionSets.filter(s => s.completed).length > 0 && (
+              <View style={{ marginBottom: 16 }}>
+                {sessionSets.map((set, i) => set.completed ? (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 14, backgroundColor: '#4ade8012', borderRadius: 10, marginBottom: 6, borderWidth: 1, borderColor: '#4ade8030' }}>
+                    <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '600' }}>Set {i + 1}</Text>
+                    <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '700' }}>{set.weight} lbs × {set.reps} reps</Text>
+                    <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '700' }}>✓</Text>
+                  </View>
+                ) : null)}
               </View>
+            )}
+
+            {/* Active set */}
+            {(() => {
+              const activeIndex = sessionSets.findIndex(s => !s.completed);
+              if (activeIndex === -1) return null;
+              const set = sessionSets[activeIndex];
+              return (
+                <View style={{ alignItems: 'center', paddingVertical: 10 }}>
+                  <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '700', letterSpacing: 1, marginBottom: 16 }}>
+                    SET {activeIndex + 1} OF {sessionSets.length}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 16, marginBottom: 24 }}>
+                    <TouchableOpacity
+                      onPress={() => { setWeightPickerIndex(activeIndex); setWeightPickerVisible(true); }}
+                      style={{ backgroundColor: '#2a2a4a', borderRadius: 16, width: 120, height: 90, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: set.weight ? COLORS.accent : '#ffffff15' }}>
+                      <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>WEIGHT</Text>
+                      <Text style={{ color: set.weight ? COLORS.text : COLORS.muted, fontSize: 28, fontWeight: '800' }}>{set.weight || '—'}</Text>
+                      {activeIndex > 0 && sessionSets[activeIndex - 1]?.weight ? (
+                        <Text style={{ color: COLORS.accent, fontSize: 10, fontWeight: '600' }}>prev {sessionSets[activeIndex - 1].weight} lbs</Text>
+                      ) : (
+                        <Text style={{ color: COLORS.muted, fontSize: 11 }}>lbs</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { setRepsPickerIndex(activeIndex); setRepsPickerVisible(true); }}
+                      style={{ backgroundColor: '#2a2a4a', borderRadius: 16, width: 120, height: 90, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: set.reps ? COLORS.accent : '#ffffff15' }}>
+                      <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>REPS</Text>
+                      <Text style={{ color: set.reps ? COLORS.text : COLORS.muted, fontSize: 28, fontWeight: '800' }}>{set.reps || '—'}</Text>
+                      <Text style={{ color: COLORS.muted, fontSize: 11 }}>reps</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               );
-            })}
+            })()}
             <TouchableOpacity
-              style={{ backgroundColor: COLORS.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 6 }}
+              style={{ backgroundColor: sessionSets.every(s => s.completed) ? COLORS.accent : '#2a2a4a', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 6 }}
               onPress={() => {
                 const completed = sessionSets.filter(s => s.completed);
-                if (completed.length === 0) return;
+                if (completed.length === 0 || !sessionSets.every(s => s.completed)) return;
                 const maxWeight = Math.max(...completed.map(s => parseFloat(s.weight) || 0));
                 const bestSet = completed.find(s => parseFloat(s.weight) === maxWeight) || completed[completed.length - 1];
                 const key = logKey(selectedDay.day, selectedExercise);
@@ -2322,7 +2333,7 @@ function Root() {
                 }
               }}
             >
-              <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 15 }}>Save Sets</Text>
+              <Text style={{ color: sessionSets.every(s => s.completed) ? COLORS.text : COLORS.muted, fontWeight: 'bold', fontSize: 15 }}>Save Sets</Text>
             </TouchableOpacity>
           </View>}
 
@@ -2428,44 +2439,79 @@ function Root() {
         {/* Reps Picker Modal */}
         {(() => {
           const sr = parseSetsReps(selectedExercise || '');
-          let repOptions = [8, 10, 12];
+          let lo = 6, hi = 15;
           if (sr) {
             const parts = sr.reps.split('-').map(Number);
-            const lo = parts[0];
-            const hi = parts.length > 1 ? parts[1] : lo;
-            if (hi - lo >= 2) {
-              repOptions = [lo, Math.round((lo + hi) / 2), hi];
-            } else if (hi - lo === 1) {
-              repOptions = [lo, hi, hi + 1];
-            } else {
-              repOptions = [lo - 1, lo, lo + 1];
-            }
+            lo = parts[0];
+            hi = parts.length > 1 ? parts[1] : lo;
           }
+          const repOptions = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
           const currentReps = repsPickerIndex !== null ? parseInt(sessionSets[repsPickerIndex]?.reps) || null : null;
           return (
             <Modal visible={repsPickerVisible} transparent animationType="fade">
               <TouchableOpacity style={{ flex: 1, backgroundColor: '#000000aa', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setRepsPickerVisible(false)}>
-                <View style={{ backgroundColor: '#1c1c3a', borderRadius: 20, paddingVertical: 24, paddingHorizontal: 32, alignItems: 'center', borderWidth: 1, borderColor: '#ffffff10', minWidth: 240 }}>
-                  <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 20 }}>SELECT REPS</Text>
-                  <View style={{ flexDirection: 'row', gap: 12 }}>
-                    {repOptions.map(r => {
-                      const selected = currentReps === r;
-                      return (
-                        <TouchableOpacity
-                          key={r}
-                          onPress={() => {
-                            const s = [...sessionSets];
-                            s[repsPickerIndex] = { ...s[repsPickerIndex], reps: String(r) };
-                            setSessionSets(s);
-                            setRepsPickerVisible(false);
-                          }}
-                          style={{ width: 64, height: 64, borderRadius: 14, backgroundColor: selected ? '#4ade80' : '#2a2a4a', borderWidth: 1, borderColor: selected ? '#4ade80' : '#ffffff15', alignItems: 'center', justifyContent: 'center' }}
-                        >
-                          <Text style={{ color: selected ? '#000' : COLORS.text, fontSize: 22, fontWeight: '700' }}>{r}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                <View style={{ alignItems: 'center', gap: 10, width: 220 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setRepsPickerVisible(false);
+                      setWeightPickerIndex(repsPickerIndex);
+                      setWeightPickerVisible(true);
+                    }}
+                    style={{ alignSelf: 'flex-start', backgroundColor: '#2a2a4a', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 10, borderWidth: 1, borderColor: '#ffffff20' }}
+                  >
+                    <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700' }}>←</Text>
+                  </TouchableOpacity>
+                  <View style={{ backgroundColor: '#1c1c3a', borderRadius: 20, paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center', borderWidth: 1, borderColor: '#ffffff10', width: 220 }}>
+                    <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 20 }}>SELECT REPS</Text>
+                    <ScrollView style={{ maxHeight: 300, width: '100%' }} showsVerticalScrollIndicator={false}>
+                      {repOptions.map(r => {
+                        const selected = currentReps === r;
+                        return (
+                          <TouchableOpacity
+                            key={r}
+                            onPress={() => {
+                              const s = [...sessionSets];
+                              s[repsPickerIndex] = { ...s[repsPickerIndex], reps: String(r) };
+                              setSessionSets(s);
+                            }}
+                            style={{ paddingVertical: 14, paddingHorizontal: 20, borderRadius: 12, marginBottom: 6, backgroundColor: selected ? '#4ade80' : '#2a2a4a', borderWidth: 1, borderColor: selected ? '#4ade80' : '#ffffff10', alignItems: 'center' }}
+                          >
+                            <Text style={{ color: selected ? '#000' : COLORS.text, fontSize: 20, fontWeight: '700' }}>{r} reps</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
                   </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const s = [...sessionSets];
+                      s[repsPickerIndex] = { ...s[repsPickerIndex], completed: true };
+                      setSessionSets(s);
+                      setRepsPickerVisible(false);
+                      if (restTimerEnabled) {
+                        const suggested = getRestSuggestion(selectedExercise);
+                        setRestingForExercise(selectedExercise);
+                        setRestTimerDuration(suggested);
+                        setRestTimerRemaining(suggested);
+                        setRestTimerRunning(true);
+                      }
+                      if (s.every(set => set.completed)) {
+                        const completed = s.filter(set => set.completed);
+                        const maxWeight = Math.max(...completed.map(set => parseFloat(set.weight) || 0));
+                        const bestSet = completed.find(set => parseFloat(set.weight) === maxWeight) || completed[completed.length - 1];
+                        const key = logKey(selectedDay.day, selectedExercise);
+                        const existing = logs[key] || [];
+                        const allSets = s.map((set, idx) => set.completed ? { weight: set.weight, reps: set.reps } : (existing[existing.length - 1]?.sets?.[idx] || { weight: '', reps: '' }));
+                        const newEntry = { programWeek: currentWeek, weight: String(maxWeight), reps: bestSet.reps, sets: allSets };
+                        const updatedLogs = { ...logs, [key]: [...existing, newEntry] };
+                        setLogs(updatedLogs);
+                        if (user) updateDoc(doc(db, 'users', user.email), { logs: updatedLogs });
+                      }
+                    }}
+                    style={{ width: 220, backgroundColor: '#4ade80', borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#000', fontSize: 15, fontWeight: '800' }}>Complete Set</Text>
+                  </TouchableOpacity>
                 </View>
               </TouchableOpacity>
             </Modal>
@@ -2474,77 +2520,96 @@ function Root() {
 
         {/* Weight Picker Modal */}
         {(() => {
-          const ITEM_HEIGHT = 40;
           const exName = cleanExerciseName(selectedExercise || '');
           const range = EXERCISE_WEIGHT_RANGES[exName] || { min: 5, max: 300 };
           const steps = [];
           for (let w = range.min; w <= range.max; w = Math.round((w + 2.5) * 10) / 10) steps.push(w);
           const ownW = weightPickerIndex !== null ? parseFloat(sessionSets[weightPickerIndex]?.weight) || 0 : 0;
-          let currentW = ownW;
-          let isPreviousSet = false;
-          if (!currentW && weightPickerIndex > 0) {
+          let prevSetWeight = null;
+          if (weightPickerIndex > 0) {
             for (let j = weightPickerIndex - 1; j >= 0; j--) {
               const prev = parseFloat(sessionSets[j]?.weight);
-              if (prev > 0) { currentW = prev; isPreviousSet = true; break; }
+              if (prev > 0) { prevSetWeight = String(prev); break; }
             }
           }
-          if (!currentW) currentW = range.min;
-          const selectedIdx = Math.max(0, steps.findIndex(w => w >= currentW));
+          const currentW = (weightPickerIndex > 0 && prevSetWeight)
+            ? parseFloat(prevSetWeight)
+            : (ownW || range.min);
+          const selectedVal = steps.find(w => Math.abs(w - currentW) < 0.01) ?? steps[0];
           return (
-            <Modal
-              visible={weightPickerVisible}
-              transparent
-              animationType="slide"
-              onShow={() => {
-                if (weightListRef.current && steps.length > 0) {
-                  setTimeout(() => {
-                    weightListRef.current?.scrollToIndex({ index: Math.max(0, selectedIdx - 3), animated: false });
-                  }, 50);
-                }
-              }}
-            >
-              <TouchableOpacity activeOpacity={1} style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'flex-end', alignItems: 'flex-start' }} onPress={() => setWeightPickerVisible(false)}>
-                <View style={{ height: screenHeight * 0.55, width: '75%', backgroundColor: '#1c1c3a', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' }}>
-                  <View style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#ffffff10' }}>
-                    <Text style={{ color: COLORS.muted, fontSize: 15 }}>Select Weight</Text>
-                  </View>
-                  <FlatList
-                    ref={weightListRef}
-                    data={steps}
-                    keyExtractor={item => String(item)}
-                    getItemLayout={(_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
-                    initialScrollIndex={Math.max(0, selectedIdx - 3)}
-                    showsVerticalScrollIndicator={false}
-                    renderItem={({ item: w }) => {
-                      const isSet1NoWeight = weightPickerIndex === 0 && !ownW;
-                      const selected = !isSet1NoWeight && Math.abs(w - currentW) < 0.01;
-                      const showPrevBadge = selected && isPreviousSet;
-                      return (
-                        <TouchableOpacity
-                          onPress={() => {
+            <Modal visible={weightPickerVisible} transparent animationType="slide">
+              <TouchableOpacity activeOpacity={1} style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'flex-end' }} onPress={() => { setTempWeightVal(null); setWeightPickerVisible(false); }}>
+                <TouchableOpacity activeOpacity={1} onPress={() => {}} style={{ marginHorizontal: 10, marginBottom: 10, backgroundColor: '#1c1c3a', borderRadius: 24, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.4, shadowRadius: 20 }}>
+                  <View style={{ paddingHorizontal: 24, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#ffffff10', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: '600' }}>Select Weight</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                      <TouchableOpacity onPress={() => {
+                        const s = [...sessionSets];
+                        s[weightPickerIndex] = { ...s[weightPickerIndex], weight: String(tempWeightVal ?? selectedVal) };
+                        s[weightPickerIndex] = { ...s[weightPickerIndex], completed: true };
+                        setSessionSets(s);
+                        setTempWeightVal(null);
+                        setWeightPickerVisible(false);
+                        if (restTimerEnabled) {
+                          const suggested = getRestSuggestion(selectedExercise);
+                          setRestingForExercise(selectedExercise);
+                          setRestTimerDuration(suggested);
+                          setRestTimerRemaining(suggested);
+                          setRestTimerRunning(true);
+                        }
+                        if (s.every(set => set.completed)) {
+                          const completed = s.filter(set => set.completed);
+                          const maxWeight = Math.max(...completed.map(set => parseFloat(set.weight) || 0));
+                          const bestSet = completed.find(set => parseFloat(set.weight) === maxWeight) || completed[completed.length - 1];
+                          const key = logKey(selectedDay.day, selectedExercise);
+                          const existing = logs[key] || [];
+                          const allSets = s.map((set, idx) => set.completed ? { weight: set.weight, reps: set.reps } : (existing[existing.length - 1]?.sets?.[idx] || { weight: '', reps: '' }));
+                          const newEntry = { programWeek: currentWeek, weight: String(maxWeight), reps: bestSet.reps, sets: allSets };
+                          const updatedLogs = { ...logs, [key]: [...existing, newEntry] };
+                          setLogs(updatedLogs);
+                          if (user) updateDoc(doc(db, 'users', user.email), { logs: updatedLogs });
+                        }
+                      }} style={{ backgroundColor: '#4ade80', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 }}>
+                        <Text style={{ color: '#000', fontSize: 13, fontWeight: '700' }}>Complete</Text>
+                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TouchableOpacity onPress={() => {
+                          if (tempWeightVal !== null) {
                             const s = [...sessionSets];
-                            s[weightPickerIndex] = { ...s[weightPickerIndex], weight: String(w) };
+                            s[weightPickerIndex] = { ...s[weightPickerIndex], weight: String(tempWeightVal) };
                             setSessionSets(s);
-                            setWeightPickerVisible(false);
-                          }}
-                          style={{ height: ITEM_HEIGHT, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#ffffff08', backgroundColor: selected ? '#4a90e218' : 'transparent' }}
-                        >
-                          <Text style={{ color: selected ? '#4a90e2' : COLORS.text, fontSize: 13, fontWeight: selected ? '700' : '400' }}>{w % 1 === 0 ? w : w.toFixed(1)} lbs</Text>
-                          {showPrevBadge && (
-                            <View style={{ backgroundColor: '#4a90e222', borderWidth: 1, borderColor: '#4a90e255', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 }}>
-                              <Text style={{ color: '#4a90e2', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>prev set</Text>
-                            </View>
-                          )}
-                          {selected && !showPrevBadge && (
-                            <View style={{ backgroundColor: '#4ade8022', borderWidth: 1, borderColor: '#4ade8055', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 }}>
-                              <Text style={{ color: '#4ade80', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>selected</Text>
-                            </View>
-                          )}
+                          }
+                          setTempWeightVal(null);
+                          setWeightPickerVisible(false);
+                          setRepsPickerIndex(weightPickerIndex);
+                          setRepsPickerVisible(true);
+                        }} style={{ backgroundColor: '#2a2a4a', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12, borderWidth: 1, borderColor: '#ffffff20' }}>
+                          <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '700' }}>Adjust Reps</Text>
                         </TouchableOpacity>
-                      );
-                    }}
-                  />
-                </View>
+                      </View>
+                    </View>
+                  </View>
+                  {prevSetWeight ? (
+                    <View style={{ paddingHorizontal: 20, paddingVertical: 8, backgroundColor: '#ffffff08', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '600' }}>Previous Set</Text>
+                      <Text style={{ color: COLORS.accent, fontSize: 12, fontWeight: '700' }}>{prevSetWeight} lbs</Text>
+                    </View>
+                  ) : null}
+                  <Picker
+                    selectedValue={tempWeightVal ?? selectedVal}
+                    onValueChange={(val) => setTempWeightVal(val)}
+                    itemStyle={{ color: COLORS.text, fontSize: 22 }}
+                    style={{ backgroundColor: '#1c1c3a' }}
+                  >
+                    {steps.map(w => (
+                      <Picker.Item key={w} label={(() => {
+                        const base = `${w % 1 === 0 ? w : w.toFixed(1)} lbs`;
+                        const milestones = { 135: '— 1 plate', 225: '— 2 plates', 315: '— 3 plates', 405: '— 4 plates', 585: '— 5 plates' };
+                        return milestones[w] ? `${base}  ${milestones[w]}` : base;
+                      })()} value={w} />
+                    ))}
+                  </Picker>
+                </TouchableOpacity>
               </TouchableOpacity>
             </Modal>
           );
@@ -2713,7 +2778,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
   choiceText: { color: COLORS.text, fontSize: 16 },
-  goalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c3a55', borderRadius: 14, padding: 16, gap: 14, borderWidth: 1, borderColor: '#ffffff10' },
+  goalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c3a', borderRadius: 18, padding: 18, gap: 14, borderWidth: 1, borderColor: '#ffffff20', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, marginBottom: 4 },
   goalEmoji: { fontSize: 32 },
   goalTitle: { color: COLORS.text, fontSize: 17, fontWeight: 'bold' },
   goalSubtitle: { color: COLORS.muted, fontSize: 13, marginTop: 2 },

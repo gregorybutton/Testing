@@ -4,14 +4,15 @@
   "main": "expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios"
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-picker/picker": "2.11.4",
     "expo": "~55.0.5",
     "expo-av": "^16.0.8",
-    "expo-linear-gradient": "~55.0.8",
+    "expo-linear-gradient": "~55.0.9",
     "expo-status-bar": "~55.0.4",
     "firebase": "^12.10.0",
     "react": "19.2.0",

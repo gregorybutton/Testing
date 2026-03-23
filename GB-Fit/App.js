@@ -87,14 +87,14 @@ const WORKOUT_PLANS = {
 
 
 const QUESTIONS = [
-  { key: 'goal', label: "What's your goal?", type: 'choice', options: ['Building Muscle - Men', 'Building Muscle - Women', 'Get Your Nutrition Plan'] },
+  { key: 'goal', label: "What's your goal?", type: 'choice', options: ['Building Muscle - Men', 'Building Muscle - Women'] },
 ];
 
 
 const GOAL_META = {
-  'Building Muscle - Men':   { icon: 'M', iconColor: '#ff6b6b', iconGradient: ['#e63946', '#7b1fa2'], subtitle: 'Track workouts' },
-  'Building Muscle - Women': { icon: 'M', iconColor: '#ff6b6b', iconGradient: ['#e63946', '#7b1fa2'], subtitle: 'Track workouts' },
-  'Get Your Nutrition Plan':    { icon: 'N', iconColor: '#69f0ae', iconGradient: ['#2ecc71', '#0097a7'], subtitle: 'Calculate calories' },
+  'Building Muscle - Men':   { icon: '🏋️', iconColor: '#ff6b6b', iconGradient: ['#e63946', '#7b1fa2'], subtitle: ['Personalized Weekly Workouts', 'Auto-Adjusts weights based on performance', 'Personalized Nutrition Plan'] },
+  'Building Muscle - Women': { icon: '🏋️', iconColor: '#ff6b6b', iconGradient: ['#e63946', '#7b1fa2'], subtitle: ['Personalized Weekly Workouts', 'Auto-Adjusts weights based on performance', 'Personalized Nutrition Plan'] },
+  'Get Your Nutrition Plan':    { icon: '🥗', iconColor: '#69f0ae', iconGradient: ['#2ecc71', '#0097a7'], subtitle: 'Calculate calories' },
 };
 
 const EXERCISE_NOTES = {
@@ -537,7 +537,7 @@ function AnimatedProgressBar({ progress, color = '#4a90e2', trackColor = '#2a2a4
 }
 
 // Plan-screen day card with spring scale on press
-function DayCard({ item, currentWeek, logs, completedWorkouts, onPress }) {
+function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress }) {
   const scale = useRef(new Animated.Value(1)).current;
   const pressIn = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 120, bounciness: 0 }).start();
   const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 80, bounciness: 6 }).start();
@@ -569,8 +569,8 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, onPress }) {
   let badge;
   if (isCompleted) {
     badge = (
-      <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#4ade80', alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: '#000', fontSize: 13, fontWeight: '900', lineHeight: 16 }}>✓</Text>
+      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#1e3a2a', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#3acd7030' }}>
+        <Text style={{ color: '#5a9070', fontSize: 11, fontWeight: '600', lineHeight: 14 }}>✓</Text>
       </View>
     );
   } else if (isStarted) {
@@ -586,34 +586,41 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, onPress }) {
       </View>
     );
   } else if (isRestDay && isToday) {
-    badge = <Text style={{ fontSize: 17, opacity: 0.7 }}>💤</Text>;
+    badge = <Text style={{ fontSize: 16, opacity: 0.55 }}>💤</Text>;
   } else if (isRestDay) {
-    badge = <Text style={{ fontSize: 17, opacity: 0.35 }}>💤</Text>;
+    badge = <Text style={{ fontSize: 16, opacity: 0.28 }}>💤</Text>;
+  } else if (isNext) {
+    badge = (
+      <View style={{ backgroundColor: '#6c80ff28', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 5, borderWidth: 1, borderColor: '#6c80ff70' }}>
+        <Text style={{ color: '#9fb0ff', fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>NEXT</Text>
+      </View>
+    );
   } else {
     badge = <Text style={{ color: COLORS.muted, fontSize: 22, fontWeight: '300', opacity: 0.5 }}>›</Text>;
   }
 
-  const cardBg = isRestDay ? '#0c0c1e' : isToday && !isCompleted ? '#1c1428' : '#1c1c42';
-  const cardBorder = isRestDay ? '#ffffff05' : isToday && !isCompleted ? '#e9456030' : '#ffffff08';
-  const cardBorderTop = isRestDay ? '#ffffff08' : isToday && !isCompleted ? '#e9456055' : '#ffffff35';
-  const shadowCol = isToday && !isCompleted && !isRestDay ? '#e94560' : '#000';
-  const shadowOp = isToday && !isCompleted && !isRestDay ? 0.18 : 0.25;
+  const cardBg = isRestDay ? '#181828' : isNext ? '#161b3a' : isToday && !isCompleted ? '#1c1428' : '#1c1c42';
+  const cardBorder = isRestDay ? '#ffffff12' : isNext ? '#7b8fff70' : isToday && !isCompleted ? '#e9456030' : '#ffffff08';
+  const cardBorderTop = isRestDay ? '#ffffff22' : isNext ? '#7b8fffcc' : isToday && !isCompleted ? '#e9456055' : '#ffffff35';
+  const shadowCol = isNext ? '#7b8fff' : isToday && !isCompleted && !isRestDay ? '#e94560' : '#000';
+  const shadowOp = isNext ? 0.38 : isToday && !isCompleted && !isRestDay ? 0.18 : 0.25;
+  const shadowRadius = isNext ? 16 : 10;
 
   return (
-    <Animated.View style={{ transform: [{ scale }], marginBottom: 14 }}>
+    <Animated.View style={{ transform: [{ scale }], marginBottom: 19, opacity: isCompleted ? 0.72 : 1 }}>
       <TouchableOpacity
         style={{
           backgroundColor: cardBg,
           borderWidth: 1,
           borderColor: cardBorder,
           borderTopColor: cardBorderTop,
-          borderRadius: 16,
+          borderRadius: 20,
           flexDirection: 'row',
           overflow: 'hidden',
           shadowColor: shadowCol,
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: shadowOp,
-          shadowRadius: 10,
+          shadowRadius: shadowRadius,
           elevation: 4,
         }}
         activeOpacity={1}
@@ -623,7 +630,7 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, onPress }) {
       >
         {/* Left accent bar */}
         {!isRestDay && (
-          <View style={{ width: 3, backgroundColor: accentColor, borderRadius: 2, marginVertical: 14, marginLeft: 12, opacity: isToday && !isCompleted ? 1 : 0.7 }} />
+          <View style={{ width: isNext ? 4 : 3, backgroundColor: isNext ? '#7b8fff' : isCompleted ? '#3a3a5a' : accentColor, borderRadius: 2, marginVertical: 14, marginLeft: 12, opacity: isNext ? 1 : isCompleted ? 0.5 : isToday && !isCompleted ? 1 : 0.7 }} />
         )}
 
         <View style={{ flex: 1, paddingHorizontal: 18, paddingVertical: 16 }}>
@@ -631,9 +638,9 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, onPress }) {
             {/* Left: day name + workout type */}
             <View style={{ flex: 1, marginRight: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
-                <Text style={{ color: isRestDay ? '#4a4a6a' : COLORS.text, fontWeight: '700', fontSize: 16 }}>{dayName}</Text>
+                <Text style={{ color: isRestDay ? '#6a6a8a' : COLORS.text, fontWeight: '700', fontSize: 16 }}>{dayName}</Text>
                 {workoutLabel ? (
-                  <Text style={{ color: isRestDay ? '#2a2a4a' : COLORS.muted, fontSize: 13 }}>– {workoutLabel}</Text>
+                  <Text style={{ color: isRestDay ? '#4a4a6a' : COLORS.muted, fontSize: 13 }}>– {workoutLabel}</Text>
                 ) : null}
               </View>
               <Text style={{ color: isRestDay ? '#2a2a3a' : '#4a4a72', fontSize: 12, marginTop: 4 }}>
@@ -652,7 +659,7 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, onPress }) {
 const CONFETTI_COLORS = ['#4ade80', '#f59e0b', '#60a5fa', '#f472b6', '#a78bfa', '#34d399', '#fbbf24'];
 const CONFETTI_COUNT = 30;
 
-function DayCompleteModal({ visible, selectedDay, logs, currentWeek, onSaveExit }) {
+function DayCompleteModal({ visible, selectedDay, logs, currentWeek, onSaveExit, showNutritionNudge, onNutrition }) {
   const [displayVol, setDisplayVol] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.88)).current;
@@ -817,11 +824,23 @@ function DayCompleteModal({ visible, selectedDay, logs, currentWeek, onSaveExit 
               ))}
             </>
           )}
+          {showNutritionNudge && (
+            <TouchableOpacity
+              onPress={onNutrition}
+              style={{ marginTop: 24, backgroundColor: '#0e2218', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#4ade8040', borderTopColor: '#4ade8070' }}
+            >
+              <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '800', marginBottom: 4 }}>Want to maximize results? 🥗</Text>
+              <Text style={{ color: COLORS.muted, fontSize: 13, lineHeight: 18 }}>Let's dial in your nutrition. Your macros are ready — tap to view your personalized plan.</Text>
+              <View style={{ marginTop: 12, backgroundColor: '#4ade8022', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}>
+                <Text style={{ color: '#4ade80', fontWeight: '800', fontSize: 14 }}>View Nutrition Plan →</Text>
+              </View>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={onSaveExit}
-            style={{ marginTop: 24, backgroundColor: '#4ade80', borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}
+            style={{ marginTop: 12, backgroundColor: showNutritionNudge ? 'transparent' : '#4ade80', borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: showNutritionNudge ? 1 : 0, borderColor: '#ffffff15' }}
           >
-            <Text style={{ color: '#000', fontWeight: '800', fontSize: 16 }}>Save & Exit</Text>
+            <Text style={{ color: showNutritionNudge ? COLORS.muted : '#000', fontWeight: '800', fontSize: 16 }}>{showNutritionNudge ? 'Maybe later' : 'Save & Exit'}</Text>
           </TouchableOpacity>
         </Animated.View>
       </Animated.View>
@@ -970,6 +989,7 @@ function Root() {
 
   const [nutritionForm, setNutritionForm] = useState({ age: '', gender: '', heightFt: '', heightIn: '', weight: '', activityLevel: '' });
   const [nutritionResult, setNutritionResult] = useState(null);
+  const [nutritionSeen, setNutritionSeen] = useState(false);
   const [stretchImgModal, setStretchImgModal] = useState(null);
   const [user, setUser] = useState(null);
   const [restTimerDuration, setRestTimerDuration] = useState(60);
@@ -977,6 +997,7 @@ function Root() {
   const [restTimerRunning, setRestTimerRunning] = useState(false);
   const [restingForExercise, setRestingForExercise] = useState(null);
   const [activeExerciseIndex, setActiveExerciseIndex] = useState(0);
+  const [previewGoal, setPreviewGoal] = useState(null);
   const [sessionSets, setSessionSets] = useState([]);
   const [weightPickerVisible, setWeightPickerVisible] = useState(false);
   const [weightPickerIndex, setWeightPickerIndex] = useState(null);
@@ -1010,6 +1031,7 @@ function Root() {
   const [settingsFrom, setSettingsFrom] = useState('plan');
   const [restTimerEnabled, setRestTimerEnabled] = useState(true);
   const [showDayComplete, setShowDayComplete] = useState(false);
+  const [showNutritionNudge, setShowNutritionNudge] = useState(false);
   const [showCompleteButton, setShowCompleteButton] = useState(false);
   const [showSwitchSides, setShowSwitchSides] = useState(false);
   const [editingEntryIndex, setEditingEntryIndex] = useState(null);
@@ -1045,6 +1067,7 @@ function Root() {
           setCompletedWorkouts(validated);
           if (data.restTimerEnabled !== undefined) setRestTimerEnabled(data.restTimerEnabled);
           if (data.profile) setProfileForm(f => ({ ...f, ...data.profile }));
+          if (data.nutritionSeen) setNutritionSeen(true);
         }
       } catch (e) {}
       setScreen('login');
@@ -1251,6 +1274,7 @@ function Root() {
       }
       setCompletedWorkouts(validated);
       if (found.restTimerEnabled !== undefined) setRestTimerEnabled(found.restTimerEnabled);
+      if (found.nutritionSeen) setNutritionSeen(true);
       setScreen('quiz');
     });
   }
@@ -1277,7 +1301,9 @@ function Root() {
         selectedDay={selectedDay}
         logs={logs}
         currentWeek={currentWeek}
-        onSaveExit={() => { setShowDayComplete(false); setScreen('plan'); }}
+        showNutritionNudge={showNutritionNudge}
+        onNutrition={() => { setShowDayComplete(false); setShowNutritionNudge(false); setScreen('nutritionResults'); }}
+        onSaveExit={() => { setShowDayComplete(false); setShowNutritionNudge(false); setScreen('plan'); }}
       />
     );
   }
@@ -1293,7 +1319,11 @@ function Root() {
     setAnswers(updated);
     setTextVal('');
 
-    if (key === 'goal' && value === 'Get Your Nutrition Plan') {
+
+    if (key === 'goal' && (value === 'Building Muscle - Men' || value === 'Building Muscle - Women')) {
+      setPlan(WORKOUT_PLANS[value]);
+      if (user) updateDoc(doc(db, 'users', user.email), { goal: value });
+      // Auto-calculate nutrition from onboarding data
       const pf = profileForm;
       const age = pf.age;
       const gender = pf.gender || user?.gender;
@@ -1310,16 +1340,7 @@ function Root() {
         const target = tdee + adj;
         const proteinG = Math.round(parseFloat(weight));
         setNutritionResult({ tdee, cut, bulk, target, proteinG, weight: parseFloat(weight) });
-        setScreen('nutritionResults');
-      } else {
-        setScreen('nutrition');
       }
-      return;
-    }
-
-    if (key === 'goal' && (value === 'Building Muscle - Men' || value === 'Building Muscle - Women')) {
-      setPlan(WORKOUT_PLANS[value]);
-      if (user) updateDoc(doc(db, 'users', user.email), { goal: value });
       const isFirstTime = Object.keys(logs).length === 0;
       setScreen(isFirstTime ? 'plan-preview' : 'plan');
       return;
@@ -1664,11 +1685,11 @@ function Root() {
                   <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>›</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={{ color: momentum.color, fontSize: 13, fontWeight: '700' }}>{momentum.label}</Text>
+              <Text style={{ color: momentum.color, fontSize: 12, fontWeight: '600', opacity: 0.9 }}>{momentum.label}</Text>
             </View>
           </View>
           {/* Progress bar */}
-          <AnimatedProgressBar progress={programProgress / 100} height={8} color={COLORS.accent} trackColor="#2a2a4a" glowColor={COLORS.accent} style={{ marginBottom: 14 }} />
+          <AnimatedProgressBar progress={programProgress / 100} height={6} color="#c0392b" trackColor="#2a2a4a" glowColor="#c0392b" style={{ marginBottom: 14 }} />
           {/* Stats row */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View>
@@ -2320,13 +2341,15 @@ function Root() {
           ) : <View />}
         </View>
         <LogoutBtn />
-        <Text style={styles.title}>Workout Tracker</Text>
-        <View style={styles.progress}>
-          {QUESTIONS.map((_, i) => (
-            <View key={i} style={[styles.dot, i === step && styles.dotActive, i < step && styles.dotDone]} />
+        {/* Step indicator */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          {[1, 2, 3, 4, 5].map(n => (
+            <View key={n} style={{ height: 3, flex: 1, borderRadius: 2, backgroundColor: n <= 5 ? COLORS.accent : '#2a2a4a' }} />
           ))}
+          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '600', marginLeft: 4 }}>Step 5 of 5</Text>
         </View>
-        <Text style={styles.questionText}>{question.label}</Text>
+        <Text style={styles.title}>Here's your plan</Text>
+        <Text style={[styles.subtitle, { marginBottom: 20 }]}>Based on your activity level and goals</Text>
         {question.type === 'text' && (
           <View style={styles.questionCard}>
             <TextInput
@@ -2354,33 +2377,123 @@ function Root() {
               const label = opt === 'Building Muscle - Men' ? "Men's Muscle Building Program\n8 Weeks - 5 Days per Week" : opt === 'Building Muscle - Women' ? "Women's Muscle Building Program\n8 Weeks - 5 Days per Week" : opt;
               const isRecommended = opt.startsWith('Building Muscle');
               return (
-                <AnimatedPress key={opt} style={[styles.goalCard, isRecommended && { borderColor: COLORS.accent + '55', shadowColor: COLORS.accent, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 }, !isRecommended && { opacity: 0.6 }]} onPress={() => handleAnswer(opt)} scaleDown={0.97}>
+                <React.Fragment key={opt}>
+                <AnimatedPress
+                  style={[styles.goalCard,
+                    isRecommended && { borderColor: COLORS.accent + '40', shadowColor: COLORS.accent, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6, padding: 22 },
+                    !isRecommended && { opacity: 0.45, transform: [{ scale: 0.97 }] },
+                  ]}
+                  onPress={() => isRecommended ? setPreviewGoal(opt) : handleAnswer(opt)} scaleDown={0.97}>
                   {isRecommended && (
                     <View style={{ position: 'absolute', top: -1, right: 14, backgroundColor: COLORS.accent, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, zIndex: 1 }}>
                       <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>RECOMMENDED</Text>
                     </View>
                   )}
-                  <LinearGradient
-                    colors={meta?.iconGradient}
-                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                    style={{
-                      width: 54, height: 54, borderRadius: 16,
-                      justifyContent: 'center', alignItems: 'center',
-                      marginRight: 14,
-                      shadowColor: meta?.iconColor, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.7, shadowRadius: 10,
-                    }}>
-                    <Text style={{ fontSize: 24, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>{meta?.icon}</Text>
-                  </LinearGradient>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.goalTitle}>{label}</Text>
-                    <Text style={styles.goalSubtitle}>{meta?.subtitle}</Text>
+                  <View style={{
+                    width: isRecommended ? 62 : 54, height: isRecommended ? 62 : 54, borderRadius: 18,
+                    justifyContent: 'center', alignItems: 'center',
+                    marginRight: 14, backgroundColor: '#ffffff10',
+                  }}>
+                    <Text style={{ fontSize: isRecommended ? 30 : 26 }}>{meta?.icon}</Text>
                   </View>
-                  <Text style={styles.goalChevron}>›</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.goalTitle, isRecommended && { fontSize: 16 }]}>{label}</Text>
+                    {isRecommended && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 2 }}>
+                        <Text style={{ color: COLORS.accent, fontSize: 13, fontWeight: '700' }}>+ Nutrition Plan</Text>
+                      </View>
+                    )}
+                    {Array.isArray(meta?.subtitle)
+                      ? meta.subtitle.map((s, i) => <Text key={i} style={[styles.goalSubtitle, { fontSize: 12, color: COLORS.muted }]}>• {s}</Text>)
+                      : <Text style={styles.goalSubtitle}>{meta?.subtitle}</Text>
+                    }
+                    {isRecommended && (
+                      <View style={{ backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: 14 }}>
+                        <Text style={{ color: '#000', fontWeight: '800', fontSize: 14 }}>Start Program →</Text>
+                      </View>
+                    )}
+                  </View>
                 </AnimatedPress>
+                {isRecommended && (
+                  <Text style={{ color: COLORS.muted, fontSize: 11, textAlign: 'center', marginTop: 8, marginBottom: 4 }}>
+                    ✦ Recommended based on your {profileForm.primaryGoal ? `goal to ${profileForm.primaryGoal.toLowerCase()}` : 'answers'}{profileForm.fitnessLevel ? ` as a ${profileForm.fitnessLevel.toLowerCase()}` : ''}
+                  </Text>
+                )}
+                </React.Fragment>
               );
             })}
           </View>
         )}
+
+      {/* ── Program Preview Modal ── */}
+      {previewGoal && (() => {
+        const plan = WORKOUT_PLANS[previewGoal];
+        const isMen = previewGoal === 'Building Muscle - Men';
+        const exampleDay = plan?.[0]; // Day 1 – Upper Body
+        return (
+          <Modal visible transparent animationType="slide" onRequestClose={() => setPreviewGoal(null)}>
+            <TouchableOpacity activeOpacity={1} style={{ flex: 1, backgroundColor: '#000000bb', justifyContent: 'flex-end' }} onPress={() => setPreviewGoal(null)}>
+              <TouchableOpacity activeOpacity={1} style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 }} onPress={() => {}}>
+                {/* Handle */}
+                <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#ffffff20', alignSelf: 'center', marginBottom: 20 }} />
+
+                <Text style={{ color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: 4 }}>
+                  {isMen ? "Men's Muscle Building" : "Women's Muscle Building"}
+                </Text>
+                <Text style={{ color: COLORS.muted, fontSize: 13, marginBottom: 24 }}>8 Weeks · 5 Days per Week · + Nutrition Plan</Text>
+
+                {/* Weekly Split */}
+                <Text style={{ color: COLORS.accent, fontSize: 12, fontWeight: '700', letterSpacing: 0.8, marginBottom: 10 }}>WEEKLY SPLIT</Text>
+                {plan?.filter(d => !d.day.includes('Rest')).map((d, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: COLORS.accent + '22', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                      <Text style={{ color: COLORS.accent, fontSize: 12, fontWeight: '800' }}>{i + 1}</Text>
+                    </View>
+                    <Text style={{ color: COLORS.text, fontSize: 14 }}>{d.day.replace(/^Day \d+ – /, '')}</Text>
+                  </View>
+                ))}
+
+                {/* Example Workout */}
+                <Text style={{ color: COLORS.accent, fontSize: 12, fontWeight: '700', letterSpacing: 0.8, marginTop: 20, marginBottom: 10 }}>EXAMPLE WORKOUT — DAY 1</Text>
+                {exampleDay?.exercises?.slice(0, 5).map((ex, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 7 }}>
+                    <Text style={{ color: COLORS.muted, fontSize: 13, marginRight: 8 }}>•</Text>
+                    <Text style={{ color: COLORS.text, fontSize: 13 }}>{ex}</Text>
+                  </View>
+                ))}
+                {exampleDay?.exercises?.length > 5 && (
+                  <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>+{exampleDay.exercises.length - 5} more exercises</Text>
+                )}
+
+                {/* Expected Results */}
+                <Text style={{ color: COLORS.accent, fontSize: 12, fontWeight: '700', letterSpacing: 0.8, marginTop: 20, marginBottom: 10 }}>EXPECTED RESULTS</Text>
+                {[
+                  { icon: '📈', text: 'Noticeable strength gains by Week 3' },
+                  { icon: '💪', text: isMen ? 'Visible muscle definition by Week 6' : 'Toned, sculpted physique by Week 6' },
+                  { icon: '⚖️', text: 'Progressive overload built in automatically' },
+                  { icon: '🥗', text: 'Custom macros calculated from your profile' },
+                ].map((r, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={{ fontSize: 16, marginRight: 10 }}>{r.icon}</Text>
+                    <Text style={{ color: COLORS.text, fontSize: 13, flex: 1 }}>{r.text}</Text>
+                  </View>
+                ))}
+
+                {/* CTA */}
+                <TouchableOpacity
+                  onPress={() => { setPreviewGoal(null); handleAnswer(previewGoal); }}
+                  style={{ backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 24 }}>
+                  <Text style={{ color: '#000', fontWeight: '800', fontSize: 16 }}>Start Program →</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setPreviewGoal(null)} style={{ alignItems: 'center', marginTop: 12 }}>
+                  <Text style={{ color: COLORS.muted, fontSize: 13 }}>Go back</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
+        );
+      })()}
+
       </KeyboardAvoidingView>
     );
   }
@@ -2485,15 +2598,13 @@ function Root() {
     ];
 
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: 70 }]}>
         <LogoutBtn />
+        <TouchableOpacity onPress={() => setScreen('plan')} style={[styles.backBtn, { position: 'absolute', top: 20, left: 16, zIndex: 10 }]}>
+          <Text style={styles.backText}>‹</Text>
+        </TouchableOpacity>
+        <Text style={[styles.title, { marginTop: 16 }]}>Your Nutrition Plan</Text>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <TouchableOpacity onPress={() => setScreen('quiz')} style={styles.backBtn}>
-              <Text style={styles.backText}>‹</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.title}>Your Nutrition Plan</Text>
           <Text style={styles.subtitle}>{answers.name}{displayWeight ? ` · ${displayWeight} lbs` : ''}{displayActivity ? ` · ${displayActivity}` : ''}</Text>
 
           {/* Goal target card */}
@@ -2560,9 +2671,6 @@ function Root() {
             </View>
           ))}
 
-          <TouchableOpacity style={[styles.button, { marginTop: 8 }]} onPress={restart}>
-            <Text style={styles.buttonText}>Start Over</Text>
-          </TouchableOpacity>
         </ScrollView>
       </View>
     );
@@ -2949,7 +3057,7 @@ function Root() {
         <TouchableOpacity onPress={restart} style={[styles.backBtn, { position: 'absolute', top: 20, left: 16, zIndex: 10 }]}>
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Your Workout Plan</Text>
+        <Text style={[styles.title, { marginTop: 16 }]}>Your Workout Plan</Text>
 
         {/* Rest Timer Banner */}
         {restTimerEnabled && restTimerRunning && (
@@ -2983,24 +3091,59 @@ function Root() {
           </View>
         )}
 
+        {/* Week Tracker Card */}
+        <View style={{ marginBottom: 8 }}>
+          <WeekTrackerCard />
+        </View>
+
+        {/* Nutrition inline strip */}
+        {nutritionResult && (
+          <TouchableOpacity
+            onPress={() => {
+              if (!nutritionSeen) { setNutritionSeen(true); if (user) updateDoc(doc(db, 'users', user.email), { nutritionSeen: true }); }
+              setScreen('nutritionResults');
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#12122a', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 12, borderWidth: 1, borderColor: '#ffffff08' }}>
+            <Text style={{ color: COLORS.muted, fontSize: 11 }}>
+              <Text>🔥 </Text>
+              <Text style={{ color: COLORS.muted, fontWeight: '600' }}>{nutritionResult.tdee.toLocaleString()} kcal</Text>
+              <Text style={{ color: '#ffffff20' }}>  •  </Text>
+              <Text>💪 </Text>
+              <Text style={{ color: COLORS.muted, fontWeight: '600' }}>{nutritionResult.proteinG}g protein</Text>
+            </Text>
+            <Text style={{ color: '#ffffff30', fontSize: 12 }}>›</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Next Action Card */}
         <NextActionCard />
-
-        {/* Week Tracker Card */}
-        <WeekTrackerCard />
 
         <FlatList
           data={plan}
           keyExtractor={(_, i) => i.toString()}
-          renderItem={({ item }) => (
+          ListHeaderComponent={
+            <View style={{ marginBottom: 12, marginTop: 0 }}>
+              <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Weekly Schedule</Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const nextDay = plan?.find(d => {
+              if (d.day.includes('Rest')) return false;
+              const k = `${d.day}|${currentWeek}`;
+              return !completedWorkouts[k];
+            });
+            const isNext = item.day === nextDay?.day;
+            return (
             <DayCard
               item={item}
               currentWeek={currentWeek}
               logs={logs}
               completedWorkouts={completedWorkouts}
+              isNext={isNext}
               onPress={() => { setSelectedDay(item); setActiveExerciseIndex(0); setRestTimerRunning(false); setRestingForExercise(null); setScreen('day'); }}
             />
-          )}
+            );
+          }}
         />
       </View>
     );
@@ -3450,10 +3593,12 @@ function Root() {
 
           const markDone = () => {
             if (done) { setShowDayComplete(true); return; }
+            const isFirstWorkout = Object.keys(completedWorkouts).length === 0;
             const updated = { ...completedWorkouts, [wKey]: true };
             setCompletedWorkouts(updated);
             if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updated });
             setShowCompleteButton(false);
+            if (isFirstWorkout && nutritionResult) setShowNutritionNudge(true);
             setShowDayComplete(true);
             setRestTimerRunning(false);
             setRestTimerRemaining(0);
@@ -4350,10 +4495,12 @@ function Root() {
 
           const markDone = () => {
             if (done) { setShowDayComplete(true); return; }
+            const isFirstWorkout = Object.keys(completedWorkouts).length === 0;
             const updated = { ...completedWorkouts, [key]: true };
             setCompletedWorkouts(updated);
             if (user) updateDoc(doc(db, 'users', user.email), { completedWorkouts: updated });
             setShowCompleteButton(false);
+            if (isFirstWorkout && nutritionResult) setShowNutritionNudge(true);
             setShowDayComplete(true);
             setRestTimerRunning(false);
             setRestTimerRemaining(0);

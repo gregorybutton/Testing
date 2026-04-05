@@ -11,7 +11,9 @@
       "Bash(ls /c/Python*/python.exe)",
       "Bash(command -v python)",
       "Bash(/c/Python314/python apply_theme.py)",
-      "Bash(grep -n \"backgroundColor: ''#0c0c1e''\" \"c:/Users/Gbutt/OneDrive/Desktop/Code/GB-Fit/GB-Fit/App.js\")"
+      "Bash(grep -n \"backgroundColor: ''#0c0c1e''\" \"c:/Users/Gbutt/OneDrive/Desktop/Code/GB-Fit/GB-Fit/App.js\")",
+      "Bash(rm -rf node_modules package-lock.json)",
+      "Bash(npm install:*)"
     ]
   }
 }

@@ -1145,7 +1145,7 @@ function MealLogModal({ visible, onClose, nutKey, mealsData, onSaveMeals, custom
   const [activeMealId, setActiveMealId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   // addFood sub-state
-  const [addMode, setAddMode] = useState('search'); // 'search' | 'quick'
+  const [addMode, setAddMode] = useState('recent'); // 'recent' | 'search' | 'quick'
   const [searchQuery, setSearchQuery] = useState('');
   const [quickMacros, setQuickMacros] = useState({ name: '', unit: '', calories: '', protein: '', carbs: '', fats: '', quantity: '1' });
   const [selectedFood, setSelectedFood] = useState(null); // food tapped in search
@@ -1317,7 +1317,7 @@ function MealLogModal({ visible, onClose, nutKey, mealsData, onSaveMeals, custom
             )}
           </View>
           {view === 'detail' && (
-            <TouchableOpacity onPress={() => { setAddMode('search'); setView('addFood'); }} style={{ backgroundColor: '#2a2a4a', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#ffffff20' }}>
+            <TouchableOpacity onPress={() => { setAddMode('recent'); setView('addFood'); }} style={{ backgroundColor: '#2a2a4a', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#ffffff20' }}>
               <Text style={{ color: COLORS.text, fontWeight: '700', fontSize: 13 }}>+ Add Food</Text>
             </TouchableOpacity>
           )}
@@ -1473,7 +1473,7 @@ function MealLogModal({ visible, onClose, nutKey, mealsData, onSaveMeals, custom
           <View style={{ flex: 1 }}>
             {/* Mode toggle */}
             <View style={{ flexDirection: 'row', margin: 16, backgroundColor: '#1c1c3a', borderRadius: 12, padding: 4 }}>
-              {[['search', 'Search'], ['quick', 'Quick Add'], ['recent', 'Recent']].map(([mode, label]) => (
+              {[['recent', 'Recent'], ['search', 'Search'], ['quick', 'Quick Add']].map(([mode, label]) => (
                 <TouchableOpacity
                   key={mode}
                   onPress={() => setAddMode(mode)}
@@ -1677,24 +1677,111 @@ function MealLogModal({ visible, onClose, nutKey, mealsData, onSaveMeals, custom
   );
 }
 
-function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, nutritionData, nutritionGoal, expandedNutKey, setExpandedNutKey, nutKey, onLogMeals, mealsCount, onCompleteRest, screenHeight }) {
+function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, nutritionData, nutritionGoal, expandedNutKey, setExpandedNutKey, nutKey, onLogMeals, mealsCount, onCompleteRest, screenHeight, nutExpandedHeight: nutExpandedHeightProp, customFoods = [], onSaveCustomFood, favoriteFoods = [], onToggleFavorite, nutritionHistory = {}, onSaveMeals, onViewNutritionPlan }) {
   const scale = useRef(new Animated.Value(1)).current;
   const nextPulse = useRef(new Animated.Value(1)).current;
   const nutExpandAnim = useRef(new Animated.Value(0)).current;
   const nutExpanded = expandedNutKey === nutKey;
+  const nutHeaderRef = useRef(null);
+  const nutExpandedHeight = nutExpandedHeightProp ?? 400;
 
+  // Inline meal log state
+  const [mlView, setMlView] = useState('overview'); // 'overview' | 'detail' | 'addFood'
+  const [mlActiveMealId, setMlActiveMealId] = useState(null);
+  const [mlAddMode, setMlAddMode] = useState('recent');
+  const [mlSearch, setMlSearch] = useState('');
+  const [mlSelectedFood, setMlSelectedFood] = useState(null);
+  const [mlQty, setMlQty] = useState('1');
+  const [mlEditingFoodId, setMlEditingFoodId] = useState(null);
+  const [mlEditQty, setMlEditQty] = useState('1');
+  const [mlQuickMacros, setMlQuickMacros] = useState({ name: '', unit: '', calories: '', protein: '', carbs: '', fats: '', quantity: '1' });
+  const [mlMeals, setMlMeals] = useState([]);
+
+  // Init meals when nutKey changes or nutritionData changes
   useEffect(() => {
-    Animated.spring(nutExpandAnim, { toValue: nutExpanded ? 1 : 0, useNativeDriver: false, friction: 9, tension: 55 }).start();
+    const base = MEAL_TYPES.map(mt => {
+      const existing = nutritionData?.meals?.find(m => m.id === mt.id);
+      return existing ? { ...existing } : { id: mt.id, name: mt.name, icon: mt.icon, foods: [], totals: { calories: 0, protein: 0, carbs: 0, fats: 0 } };
+    });
+    setMlMeals(base);
+  }, [nutKey, nutritionData]);
+
+  // Reset sub-view when collapsed
+  useEffect(() => {
+    if (!nutExpanded) { setMlView('overview'); setMlActiveMealId(null); setMlSearch(''); setMlSelectedFood(null); setMlQty('1'); }
+  }, [nutExpanded]);
+
+  function mlRecalc(list) {
+    return list.map(m => ({ ...m, totals: m.foods.reduce((acc, f) => ({ calories: acc.calories + f.calories, protein: acc.protein + f.protein, carbs: acc.carbs + f.carbs, fats: acc.fats + f.fats }), { calories: 0, protein: 0, carbs: 0, fats: 0 }) }));
+  }
+  function mlAutoSave(updated) {
+    const totals = updated.reduce((acc, m) => ({ calories: acc.calories + m.totals.calories, protein: acc.protein + m.totals.protein, carbs: acc.carbs + m.totals.carbs, fats: acc.fats + m.totals.fats }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
+    onSaveMeals?.(updated, totals);
+  }
+  function mlAddFood(food, quantity = 1) {
+    const q = Math.max(parseFloat(quantity) || 1, 0.1);
+    const newFood = { id: `${Date.now()}`, name: food.name, unit: food.unit || '', quantity: q, perUnit: { calories: food.calories, protein: food.protein, carbs: food.carbs, fats: food.fats }, calories: Math.round(food.calories * q), protein: Math.round(food.protein * q), carbs: Math.round(food.carbs * q), fats: Math.round(food.fats * q) };
+    const updated = mlRecalc(mlMeals.map(m => m.id === mlActiveMealId ? { ...m, foods: [...m.foods, newFood] } : m));
+    setMlMeals(updated); mlAutoSave(updated);
+    setMlView('detail'); setMlSearch(''); setMlSelectedFood(null); setMlQty('1');
+    setMlQuickMacros({ name: '', unit: '', calories: '', protein: '', carbs: '', fats: '', quantity: '1' });
+  }
+  function mlAddAllFromMeal(foods) {
+    const newFoods = foods.map(f => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, name: f.name, unit: f.unit || '', quantity: f.quantity || 1, perUnit: f.perUnit || { calories: f.calories, protein: f.protein, carbs: f.carbs, fats: f.fats }, calories: f.calories, protein: f.protein, carbs: f.carbs, fats: f.fats }));
+    const updated = mlRecalc(mlMeals.map(m => m.id === mlActiveMealId ? { ...m, foods: [...m.foods, ...newFoods] } : m));
+    setMlMeals(updated); mlAutoSave(updated); setMlView('detail');
+  }
+  function mlRemoveFood(mealId, foodId) {
+    const updated = mlRecalc(mlMeals.map(m => m.id === mealId ? { ...m, foods: m.foods.filter(f => f.id !== foodId) } : m));
+    setMlMeals(updated); mlAutoSave(updated);
+  }
+  function mlUpdateQty(mealId, foodId, newQty) {
+    const q = Math.max(parseFloat(newQty) || 1, 0.1);
+    const updated = mlRecalc(mlMeals.map(m => {
+      if (m.id !== mealId) return m;
+      return { ...m, foods: m.foods.map(f => { if (f.id !== foodId) return f; const base = f.perUnit ?? { calories: Math.round(f.calories / (f.quantity || 1)), protein: Math.round(f.protein / (f.quantity || 1)), carbs: Math.round(f.carbs / (f.quantity || 1)), fats: Math.round(f.fats / (f.quantity || 1)) }; return { ...f, quantity: q, perUnit: base, calories: Math.round(base.calories * q), protein: Math.round(base.protein * q), carbs: Math.round(base.carbs * q), fats: Math.round(base.fats * q) }; }) };
+    }));
+    setMlMeals(updated); mlAutoSave(updated); setMlEditingFoodId(null);
+  }
+
+  const mlActiveMeal = mlMeals.find(m => m.id === mlActiveMealId);
+  const mlDailyTotals = mlMeals.reduce((acc, m) => ({ calories: acc.calories + m.totals.calories, protein: acc.protein + m.totals.protein, carbs: acc.carbs + m.totals.carbs, fats: acc.fats + m.totals.fats }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
+  const favSet = new Set(favoriteFoods);
+  const allFoods = [...customFoods.map(f => ({ ...f, isCustom: true })), ...FOOD_DATABASE];
+  const sq = mlSearch.toLowerCase();
+  const matched = allFoods.filter(f => f.name.toLowerCase().includes(sq));
+  const filteredDB = [...matched.filter(f => favSet.has(f.name)).map(f => ({ ...f, isFavorite: true })), ...matched.filter(f => !favSet.has(f.name) && f.isCustom), ...matched.filter(f => !favSet.has(f.name) && !f.isCustom)];
+  const recentMeals = (() => {
+    const all = Object.entries(nutritionHistory).filter(([key]) => key !== nutKey).sort((a, b) => b[0].localeCompare(a[0])).flatMap(([key, dayData]) => (dayData.meals || []).filter(m => m.foods && m.foods.length > 0).map(m => ({ ...m, dateKey: key })));
+    const seen = new Set();
+    return all.filter(meal => {
+      const fp = meal.foods.map(f => f.name).sort().join('|');
+      if (seen.has(fp)) return false;
+      seen.add(fp);
+      return true;
+    }).slice(0, 25);
+  })();
+  function mlFormatKey(key) { const [,w,d] = key.match(/w(\d+)_d(\d+)/) || []; return w && d ? `Week ${w} Day ${d}` : key; }
+
+  const nutAnimatingRef = useRef(false);
+  useEffect(() => {
+    nutAnimatingRef.current = true;
+    if (nutExpanded) {
+      Animated.spring(nutExpandAnim, { toValue: 1, useNativeDriver: false, friction: 9, tension: 55 }).start(() => { nutAnimatingRef.current = false; });
+    } else {
+      Animated.timing(nutExpandAnim, { toValue: 0, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start(() => { nutAnimatingRef.current = false; });
+    }
   }, [nutExpanded]);
 
   const toggleNut = () => {
+    if (nutAnimatingRef.current) return;
     setExpandedNutKey(nutExpanded ? null : nutKey);
   };
   const pressIn = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 120, bounciness: 0 }).start();
   const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 80, bounciness: 6 }).start();
 
   useEffect(() => {
-    if (isNext) {
+    if (isNext && !nutExpanded) {
       const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(nextPulse, { toValue: 0.97, duration: 500, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
@@ -1706,7 +1793,7 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
     } else {
       nextPulse.setValue(1);
     }
-  }, [isNext]);
+  }, [isNext, nutExpanded]);
 
   const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const todayName = DAY_NAMES[new Date().getDay()];
@@ -1807,7 +1894,7 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
       <Animated.View style={{ transform: [{ scale: nextPulse }] }}>
 
         {/* Nutrition card — in normal flow so it sets the wrapper height */}
-        <TouchableOpacity activeOpacity={0.85} onPress={toggleNut}
+        <View
           style={{
             backgroundColor: nutBg,
             borderRadius: 14,
@@ -1830,11 +1917,12 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
             const nutWinCount = (workoutDone ? 1 : 0) + (calHit ? 1 : 0) + (protHit ? 1 : 0);
             const totalNutWins = 3;
             return (
-              <View style={{ paddingHorizontal: 16, paddingBottom: 5, paddingTop: 4 }}>
-                <TouchableOpacity onPress={toggleNut} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  {/* Arrow — always leftmost, never moves */}
-                  <Text style={{ color: '#4ade8066', fontSize: 10, fontWeight: '700', width: 10 }}>{nutExpanded ? '▲' : '▼'}</Text>
-                  {/* Macros when collapsed, Meals stretches when expanded */}
+              <View ref={nutHeaderRef} style={{ paddingHorizontal: 16, paddingBottom: nutExpanded ? 10 : 5, paddingTop: nutExpanded ? 10 : 4 }}>
+                <TouchableOpacity onPress={toggleNut} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {/* Arrow */}
+                  <Text style={{ color: '#4ade8066', fontSize: nutExpanded ? 13 : 10, fontWeight: '700', width: nutExpanded ? 14 : 10 }}>{nutExpanded ? '▲' : '▼'}</Text>
+                  {nutExpanded && <Text style={{ color: '#ffffff55', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>Close</Text>}
+                  {/* Macros when collapsed */}
                   {!nutExpanded ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 }}>
                       {nutritionData ? (
@@ -1853,85 +1941,278 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
                         </>
                       )}
                     </View>
-                  ) : (
-                    <View style={{ flex: 1 }} />
-                  )}
-                  {/* Meals + Wins always on right */}
-                  <TouchableOpacity onPress={onLogMeals} style={{ backgroundColor: '#0d2e1e', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#4ade8030', marginTop: 2 }}>
-                    <Text style={{ color: '#4ade80', fontSize: 10, fontWeight: '700' }}>Meals</Text>
-                  </TouchableOpacity>
-                  <Text style={{ color: nutWinCount === totalNutWins ? '#4ade80' : '#ffffff40', fontSize: 10, fontWeight: '800', letterSpacing: 0.3 }}>Wins: {nutWinCount}/{totalNutWins}</Text>
+                  ) : null}
+                  {/* Wins — always pushed to right */}
+                  <View style={{ flex: 1 }} />
+                  <Text style={{ color: nutWinCount === totalNutWins ? '#4ade80' : nutWinCount > 0 ? '#facc15' : '#ffffff55', fontSize: nutExpanded ? 18 : 10, fontWeight: '900', letterSpacing: nutExpanded ? 0.5 : 0.3 }}>Wins: {nutWinCount}/{totalNutWins}</Text>
                 </TouchableOpacity>
               </View>
             );
           })()}
 
-          {/* Expandable breakdown area */}
-          <Animated.View style={{ height: nutExpandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, (screenHeight ?? 800) * 0.45] }), overflow: 'hidden' }}>
-            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-            {(() => {
-              const goalCal = nutritionGoal?.cal ?? 0;
-              const goalProt = nutritionGoal?.prot ?? 0;
-              if (!nutritionData || (!nutritionData.calories && !nutritionData.protein)) {
+          {/* Expandable meal log area */}
+          <Animated.View style={{ height: nutExpandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, nutExpandedHeight] }), overflow: 'hidden' }}>
+            <View style={{ flex: 1, backgroundColor: '#0a1a10' }}>
+              {/* Sub-nav header */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#ffffff0a' }}>
+                {mlView !== 'overview' && (
+                  <TouchableOpacity onPress={() => { if (mlView === 'addFood') setMlView('detail'); else setMlView('overview'); }} style={{ marginRight: 12, paddingVertical: 4, paddingRight: 10, paddingLeft: 2 }}>
+                    <Text style={{ color: COLORS.text, fontSize: 32, fontWeight: '600', lineHeight: 36 }}>‹</Text>
+                  </TouchableOpacity>
+                )}
+                <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '800', flex: 1 }}>
+                  {mlView === 'overview' ? 'Log Meals' : mlView === 'detail' ? `${mlActiveMeal?.icon} ${mlActiveMeal?.name}` : 'Add Food'}
+                </Text>
+                {mlView === 'overview' && onViewNutritionPlan && (
+                  <TouchableOpacity onPress={onViewNutritionPlan} style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#ffffff20' }}>
+                    <Text style={{ color: COLORS.text, fontWeight: '700', fontSize: 12 }}>Nutrition Plan</Text>
+                  </TouchableOpacity>
+                )}
+                {mlView === 'detail' && (
+                  <TouchableOpacity onPress={() => { setMlAddMode('recent'); setMlView('addFood'); }} style={{ backgroundColor: '#2a2a4a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#ffffff20' }}>
+                    <Text style={{ color: COLORS.text, fontWeight: '700', fontSize: 12 }}>+ Add Food</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Daily totals + progress */}
+              {(() => {
+                const goalCal = nutritionGoal?.cal ?? 0;
+                const goalProt = nutritionGoal?.prot ?? 0;
+                const rows = [
+                  { icon: '🔥', label: 'Calories', val: mlDailyTotals.calories, goal: goalCal, unit: 'kcal' },
+                  { icon: '💪', label: 'Protein',  val: mlDailyTotals.protein,  goal: goalProt, unit: 'g' },
+                  { icon: '🍚', label: 'Carbs',    val: mlDailyTotals.carbs,    goal: 0, unit: 'g' },
+                  { icon: '🥑', label: 'Fats',     val: mlDailyTotals.fats,     goal: 0, unit: 'g' },
+                ];
                 return (
-                  <View style={{ paddingHorizontal: 16, paddingBottom: 14, paddingTop: 6, alignItems: 'center' }}>
-                    <Text style={{ color: '#ffffff30', fontSize: 11, textAlign: 'center' }}>No nutrition logged yet.{'\n'}Tap "Log Meals" to get started.</Text>
-                  </View>
-                );
-              }
-              const macros = [
-                { icon: '🔥', label: 'CALORIES', value: nutritionData.calories.toLocaleString(), raw: nutritionData.calories, goal: goalCal, unit: 'kcal' },
-                { icon: '💪', label: 'PROTEIN',  value: `${nutritionData.protein}g`,  raw: nutritionData.protein,  goal: goalProt, unit: 'g' },
-                { icon: '🍚', label: 'CARBS',    value: `${nutritionData.carbs ?? 0}g`,   raw: nutritionData.carbs ?? 0,   goal: 0, unit: 'g' },
-                { icon: '🥑', label: 'FATS',     value: `${nutritionData.fats ?? 0}g`,    raw: nutritionData.fats ?? 0,    goal: 0, unit: 'g' },
-              ];
-              const hasMeals = nutritionData.meals && nutritionData.meals.some(m => m.foods && m.foods.length > 0);
-              return (
-                <View style={{ paddingHorizontal: 14, paddingBottom: 12, paddingTop: 6, gap: 8 }}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {macros.slice(0, 2).map(m => {
-                      const pct = m.goal > 0 ? Math.min(1, m.raw / m.goal) : null;
+                  <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#ffffff08', backgroundColor: '#071210', gap: 6 }}>
+                    {rows.map(({ icon, label, val, goal, unit }) => {
+                      const hasGoal = goal > 0;
+                      const pct = hasGoal ? Math.min(val / goal, 1.15) : null;
+                      const over = hasGoal && val > goal * 1.1;
+                      const hit = hasGoal && !over && val >= goal * 0.9;
+                      const barColor = over ? '#f87171' : hit ? '#4ade80' : '#facc15';
                       return (
-                        <View key={m.label} style={{ flex: 1, backgroundColor: '#ffffff07', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#4ade8018' }}>
-                          <Text style={{ color: '#4ade80', fontSize: 16, fontWeight: '900' }}>{m.icon} {m.value}</Text>
-                          <Text style={{ color: '#ffffff40', fontSize: 9, fontWeight: '700', letterSpacing: 0.8, marginTop: 2 }}>{m.label}</Text>
-                          {pct !== null && (
-                            <>
-                              <View style={{ height: 2, backgroundColor: '#ffffff12', borderRadius: 1, marginTop: 6 }}>
-                                <View style={{ height: 2, backgroundColor: pct >= 0.9 ? '#4ade80' : '#facc15', borderRadius: 1, width: `${Math.round(pct * 100)}%` }} />
-                              </View>
-                              <Text style={{ color: '#ffffff25', fontSize: 9, marginTop: 2 }}>{Math.round(pct * 100)}% of {m.goal}{m.unit === 'kcal' ? '' : m.unit}</Text>
-                            </>
+                        <View key={label}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                            <Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: '700' }}>{icon} {label}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Text style={{ color: over ? '#f87171' : hit ? '#4ade80' : COLORS.text, fontSize: 11, fontWeight: '800' }}>
+                                {val}{hasGoal ? ` / ${goal}` : ''} {unit}
+                              </Text>
+                              {over && <Text style={{ fontSize: 10 }}>🔴</Text>}
+                              {hit && <Text style={{ fontSize: 10 }}>🟢</Text>}
+                            </View>
+                          </View>
+                          {hasGoal && (
+                            <View style={{ height: 4, backgroundColor: '#ffffff12', borderRadius: 2 }}>
+                              <View style={{ height: 4, backgroundColor: barColor, borderRadius: 2, width: `${Math.min(pct * 100, 100)}%` }} />
+                            </View>
                           )}
                         </View>
                       );
                     })}
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {macros.slice(2).map(m => (
-                      <View key={m.label} style={{ flex: 1, backgroundColor: '#ffffff07', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#4ade8018' }}>
-                        <Text style={{ color: '#4ade80', fontSize: 16, fontWeight: '900' }}>{m.icon} {m.value}</Text>
-                        <Text style={{ color: '#ffffff40', fontSize: 9, fontWeight: '700', letterSpacing: 0.8, marginTop: 2 }}>{m.label}</Text>
+                );
+              })()}
+
+              {/* ── OVERVIEW ── */}
+              {mlView === 'overview' && (
+                <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 10, paddingBottom: 20 }}>
+                  {mlMeals.map(meal => (
+                    <TouchableOpacity key={meal.id} onPress={() => { setMlActiveMealId(meal.id); setMlView('detail'); }}
+                      style={{ backgroundColor: '#1c1c3a', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#ffffff0a' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={{ fontSize: 18 }}>{meal.icon}</Text>
+                          <View>
+                            <Text style={{ color: COLORS.text, fontWeight: '800', fontSize: 13 }}>{meal.name}</Text>
+                            <Text style={{ color: COLORS.muted, fontSize: 10, marginTop: 1 }}>{meal.foods.length === 0 ? 'No foods yet' : `${meal.foods.length} food${meal.foods.length !== 1 ? 's' : ''}`}</Text>
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          {meal.totals.calories > 0 && <Text style={{ color: COLORS.success, fontWeight: '800', fontSize: 12 }}>{meal.totals.calories} kcal</Text>}
+                          <TouchableOpacity
+                            onPress={() => { setMlActiveMealId(meal.id); setMlAddMode('recent'); setMlView('addFood'); }}
+                            style={{ backgroundColor: COLORS.success, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 5 }}
+                          >
+                            <Text style={{ color: '#000', fontWeight: '900', fontSize: 12 }}>+ Add</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* ── DETAIL ── */}
+              {mlView === 'detail' && mlActiveMeal && (
+                <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 10, paddingBottom: 20 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-around', backgroundColor: '#1a1a2e', borderRadius: 10, padding: 8, marginBottom: 10 }}>
+                    {[['Cals', mlActiveMeal.totals.calories], ['Prot', mlActiveMeal.totals.protein + 'g'], ['Carbs', mlActiveMeal.totals.carbs + 'g'], ['Fats', mlActiveMeal.totals.fats + 'g']].map(([lbl, val]) => (
+                      <View key={lbl} style={{ alignItems: 'center' }}>
+                        <Text style={{ color: COLORS.text, fontWeight: '800', fontSize: 13 }}>{val}</Text>
+                        <Text style={{ color: COLORS.muted, fontSize: 10 }}>{lbl}</Text>
                       </View>
                     ))}
                   </View>
-                  {hasMeals && (
-                    <View style={{ backgroundColor: '#ffffff06', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#ffffff10', gap: 4 }}>
-                      <Text style={{ color: '#ffffff40', fontSize: 9, fontWeight: '700', letterSpacing: 0.8, marginBottom: 2 }}>BY MEAL</Text>
-                      {nutritionData.meals.filter(m => m.foods && m.foods.length > 0).map(m => (
-                        <View key={m.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={{ color: '#ffffff80', fontSize: 11 }}>{m.icon} {m.name}</Text>
-                          <Text style={{ color: '#4ade8099', fontSize: 11, fontWeight: '700' }}>{m.totals.calories} kcal · {m.totals.protein}g P</Text>
+                  {mlActiveMeal.foods.length === 0 ? (
+                    <Text style={{ color: COLORS.muted, textAlign: 'center', marginTop: 20, fontSize: 12 }}>No foods yet — tap + Add Food</Text>
+                  ) : mlActiveMeal.foods.map(food => {
+                    const isEd = mlEditingFoodId === food.id;
+                    const qNum = food.quantity || 1;
+                    const qStr = qNum % 1 === 0 ? String(qNum) : qNum.toFixed(1);
+                    const qDisp = food.unit ? `${qStr} × ${food.unit}` : qNum !== 1 ? `×${qStr}` : null;
+                    return (
+                      <View key={food.id} style={{ backgroundColor: isEd ? '#1e3a2a' : '#1c1c3a', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: isEd ? '#4ade8040' : 'transparent' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <Text style={{ color: isEd ? COLORS.success : COLORS.text, fontWeight: '700', fontSize: 13 }}>{food.name}</Text>
+                            {qDisp && <View style={{ backgroundColor: '#2a2a4a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}><Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: '700' }}>{qDisp}</Text></View>}
+                          </View>
+                          <TouchableOpacity onPress={() => { setMlEditingFoodId(isEd ? null : food.id); setMlEditQty(String(food.quantity || 1)); }} style={{ marginLeft: 8, padding: 4 }}>
+                            <Text style={{ color: isEd ? COLORS.success : COLORS.muted, fontSize: 11, fontWeight: '700' }}>{isEd ? 'Done' : 'Edit'}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => { if (isEd) setMlEditingFoodId(null); mlRemoveFood(mlActiveMeal.id, food.id); }} style={{ marginLeft: 8, padding: 4 }}>
+                            <Text style={{ color: COLORS.accent, fontSize: 16, fontWeight: '700' }}>×</Text>
+                          </TouchableOpacity>
                         </View>
-                      ))}
+                        <Text style={{ color: COLORS.muted, fontSize: 10, marginTop: 2 }}>{food.calories} kcal · {food.protein}g P · {food.carbs}g C · {food.fats}g F</Text>
+                        {isEd && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 }}>
+                            <Text style={{ color: COLORS.muted, fontSize: 11, flex: 1 }}>Qty</Text>
+                            <TouchableOpacity onPress={() => setMlEditQty(v => String(Math.max(0.5, Math.round((parseFloat(v) || 1) * 2 - 1) / 2)))} style={{ width: 28, height: 28, backgroundColor: '#2a2a4a', borderRadius: 6, alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ color: COLORS.text, fontSize: 16, lineHeight: 18 }}>−</Text>
+                            </TouchableOpacity>
+                            <TextInput value={mlEditQty} onChangeText={setMlEditQty} keyboardType="decimal-pad" style={{ width: 40, textAlign: 'center', color: COLORS.text, fontSize: 12, fontWeight: '700', backgroundColor: '#2a2a4a', borderRadius: 6, paddingVertical: 4 }} />
+                            <TouchableOpacity onPress={() => setMlEditQty(v => String(Math.round((parseFloat(v) || 1) * 2 + 1) / 2))} style={{ width: 28, height: 28, backgroundColor: '#2a2a4a', borderRadius: 6, alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ color: COLORS.text, fontSize: 16, lineHeight: 18 }}>+</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => mlUpdateQty(mlActiveMeal.id, food.id, mlEditQty)} style={{ backgroundColor: COLORS.success, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, marginLeft: 4 }}>
+                              <Text style={{ color: '#000', fontWeight: '800', fontSize: 11 }}>Update</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              {/* ── ADD FOOD ── */}
+              {mlView === 'addFood' && (
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', margin: 10, backgroundColor: '#1c1c3a', borderRadius: 10, padding: 3 }}>
+                    {[['recent', 'Recent'], ['search', 'Search'], ['quick', 'Quick Add']].map(([mode, label]) => (
+                      <TouchableOpacity key={mode} onPress={() => setMlAddMode(mode)} style={{ flex: 1, paddingVertical: 6, borderRadius: 8, alignItems: 'center', backgroundColor: mlAddMode === mode ? COLORS.accent : 'transparent' }}>
+                        <Text style={{ color: mlAddMode === mode ? '#fff' : COLORS.muted, fontWeight: '700', fontSize: 11 }}>{label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {mlAddMode === 'recent' && (
+                    <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 10, paddingBottom: 20 }}>
+                      {recentMeals.length === 0 ? <Text style={{ color: COLORS.muted, textAlign: 'center', marginTop: 20, fontSize: 12 }}>No previous meals yet</Text> : recentMeals.map((meal, idx) => {
+                        const preview = meal.foods.slice(0, 3).map(f => f.name).join(', ') + (meal.foods.length > 3 ? ` +${meal.foods.length - 3} more` : '');
+                        return (
+                          <View key={idx} style={{ backgroundColor: '#1c1c3a', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#ffffff10' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                              <View style={{ flex: 1, marginRight: 8 }}>
+                                <Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: '700', marginBottom: 2 }}>{mlFormatKey(meal.dateKey)} · {meal.icon} {meal.name}</Text>
+                                <Text style={{ color: COLORS.muted, fontSize: 11 }} numberOfLines={2}>{preview}</Text>
+                              </View>
+                              <TouchableOpacity onPress={() => { mlAddAllFromMeal(meal.foods); setMlView('overview'); }} style={{ backgroundColor: COLORS.success, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                                <Text style={{ color: '#000', fontWeight: '800', fontSize: 12 }}>Add All</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+
+                  {mlAddMode === 'search' && (
+                    <View style={{ flex: 1 }}>
+                      <View style={{ marginHorizontal: 10, marginBottom: 8, backgroundColor: '#1c1c3a', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ffffff10' }}>
+                        <Text style={{ color: COLORS.muted, marginRight: 6, fontSize: 12 }}>🔍</Text>
+                        <TextInput value={mlSearch} onChangeText={v => { setMlSearch(v); setMlSelectedFood(null); setMlQty('1'); }} placeholder="Search foods..." placeholderTextColor={COLORS.muted} style={{ flex: 1, color: COLORS.text, fontSize: 13 }} autoFocus />
+                        {mlSearch.length > 0 && <TouchableOpacity onPress={() => { setMlSearch(''); setMlSelectedFood(null); setMlQty('1'); }}><Text style={{ color: COLORS.muted, fontSize: 14, paddingLeft: 6 }}>×</Text></TouchableOpacity>}
+                      </View>
+                      <FlatList
+                        data={filteredDB}
+                        keyExtractor={f => f.name}
+                        keyboardShouldPersistTaps="handled"
+                        nestedScrollEnabled
+                        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
+                        renderItem={({ item: food }) => {
+                          const isSel = mlSelectedFood?.name === food.name;
+                          const q = isSel ? Math.max(parseFloat(mlQty) || 1, 0.1) : 1;
+                          return (
+                            <TouchableOpacity activeOpacity={isSel ? 1 : 0.7} onPress={() => { if (!isSel) { setMlSelectedFood(food); setMlQty('1'); } }}
+                              style={{ backgroundColor: isSel ? '#1e3a2a' : '#1c1c3a', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6, borderWidth: 1, borderColor: isSel ? '#4ade8060' : 'transparent' }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <TouchableOpacity onPress={() => onToggleFavorite?.(food.name)} style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}>
+                                  <Text style={{ fontSize: food.isFavorite ? 13 : 11, opacity: food.isFavorite ? 1 : 0.12 }}>⭐</Text>
+                                </TouchableOpacity>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ color: isSel ? COLORS.success : COLORS.text, fontWeight: '700', fontSize: 13 }}>{food.name}</Text>
+                                  <Text style={{ color: COLORS.muted, fontSize: 10, marginTop: 1 }}>
+                                    {isSel ? `${Math.round(food.calories * q)} kcal · ${Math.round(food.protein * q)}g P · ${Math.round(food.carbs * q)}g C · ${Math.round(food.fats * q)}g F` : `${food.calories} kcal · ${food.protein}g P · ${food.carbs}g C · ${food.fats}g F`}
+                                  </Text>
+                                </View>
+                                {isSel ? (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, gap: 4 }}>
+                                    <View style={{ alignItems: 'center', gap: 3 }}>
+                                      <TouchableOpacity onPress={() => setMlQty(v => String(Math.round((parseFloat(v) || 1) * 2 + 1) / 2))} style={{ width: 26, height: 22, backgroundColor: '#2a2a4a', borderRadius: 5, alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ color: COLORS.text, fontSize: 14, lineHeight: 16 }}>+</Text>
+                                      </TouchableOpacity>
+                                      <TextInput value={mlQty} onChangeText={setMlQty} keyboardType="decimal-pad" style={{ width: 34, textAlign: 'center', color: COLORS.text, fontSize: 12, fontWeight: '700', backgroundColor: '#2a2a4a', borderRadius: 5, paddingVertical: 2 }} />
+                                      <TouchableOpacity onPress={() => setMlQty(v => String(Math.max(0.5, Math.round((parseFloat(v) || 1) * 2 - 1) / 2)))} style={{ width: 26, height: 22, backgroundColor: '#2a2a4a', borderRadius: 5, alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ color: COLORS.text, fontSize: 14, lineHeight: 16 }}>−</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                    <TouchableOpacity onPress={() => mlAddFood(food, mlQty)} style={{ width: 32, height: 32, backgroundColor: COLORS.success, borderRadius: 7, alignItems: 'center', justifyContent: 'center' }}>
+                                      <Text style={{ color: '#000', fontSize: 20, fontWeight: '800', lineHeight: 22 }}>+</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                ) : (
+                                  <TouchableOpacity onPress={() => { setMlSelectedFood(food); setMlQty('1'); }} style={{ width: 26, height: 26, backgroundColor: '#2a2a4a', borderRadius: 5, alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+                                    <Text style={{ color: COLORS.success, fontSize: 18, fontWeight: '300', lineHeight: 20 }}>+</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        }}
+                        ListEmptyComponent={<Text style={{ color: COLORS.muted, textAlign: 'center', marginTop: 20, fontSize: 12 }}>No foods match your search</Text>}
+                      />
                     </View>
                   )}
+
+                  {mlAddMode === 'quick' && (
+                    <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 10, paddingBottom: 20 }}>
+                      {[['Name', 'name', 'default'], ['Unit (e.g. 100g)', 'unit', 'default'], ['Quantity', 'quantity', 'decimal-pad'], ['Calories (per serving)', 'calories', 'numeric'], ['Protein (g)', 'protein', 'numeric'], ['Carbs (g)', 'carbs', 'numeric'], ['Fats (g)', 'fats', 'numeric']].map(([label, key, kb]) => (
+                        <View key={key} style={{ marginBottom: 8 }}>
+                          <Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 3 }}>{label.toUpperCase()}</Text>
+                          <TextInput value={mlQuickMacros[key]} onChangeText={v => setMlQuickMacros(p => ({ ...p, [key]: v }))} keyboardType={kb} placeholder={key === 'quantity' ? '1' : label} placeholderTextColor="#ffffff30" style={{ backgroundColor: '#1c1c3a', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, color: COLORS.text, fontSize: 13, borderWidth: 1, borderColor: '#ffffff10' }} />
+                        </View>
+                      ))}
+                      <TouchableOpacity onPress={() => {
+                        if (!mlQuickMacros.name.trim()) { Alert.alert('Enter a name'); return; }
+                        const qv = Math.max(parseFloat(mlQuickMacros.quantity) || 1, 0.1);
+                        const cf = { name: mlQuickMacros.name.trim(), unit: mlQuickMacros.unit.trim(), calories: parseInt(mlQuickMacros.calories) || 0, protein: parseInt(mlQuickMacros.protein) || 0, carbs: parseInt(mlQuickMacros.carbs) || 0, fats: parseInt(mlQuickMacros.fats) || 0 };
+                        onSaveCustomFood?.(cf); mlAddFood(cf, qv);
+                      }} style={{ backgroundColor: COLORS.success, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 6 }}>
+                        <Text style={{ color: '#000', fontWeight: '800', fontSize: 14 }}>Add Food</Text>
+                      </TouchableOpacity>
+                    </ScrollView>
+                  )}
                 </View>
-              );
-            })()}
-            </ScrollView>
+              )}
+            </View>
           </Animated.View>
-        </TouchableOpacity>
+        </View>
 
         {/* Day card — absolutely positioned on top, rendered last so it paints over nutrition */}
         <TouchableOpacity
@@ -2482,8 +2763,12 @@ function Root() {
   const [dailyWins, setDailyWins] = useState({});
   const [showNutritionLogModal, setShowNutritionLogModal] = useState(false);
   const [expandedNutKey, setExpandedNutKey] = useState(null);
+  const weekCardAnim2 = useRef(new Animated.Value(1)).current;
   const planScrollOffsetRef = useRef(0);
   const planSavedScrollOffsetRef = useRef(0);
+  const planSavedScrollIndexRef = useRef(null);
+  const planFlatListTopRef = useRef(0); // absolute Y of FlatList on screen
+  const planFlatListContainerRef = useRef(null);
   const [mealLogModalKey, setMealLogModalKey] = useState(null); // nutKey when modal is open
   const [customFoods, setCustomFoods] = useState([]);
   const [favoriteFoods, setFavoriteFoods] = useState([]); // array of food names
@@ -3023,7 +3308,20 @@ function Root() {
         logs={logs}
         currentWeek={currentWeek}
         showNutritionNudge={showNutritionNudge}
-        onNutrition={() => { setShowDayComplete(false); setShowNutritionNudge(false); setScreen('nutritionResults'); }}
+        onNutrition={() => {
+          setShowDayComplete(false);
+          setShowNutritionNudge(false);
+          setScreen('plan');
+          const idx = plan ? plan.findIndex(d => d.day === selectedDay?.day) : -1;
+          if (idx >= 0) {
+            const key = `w${currentWeek}_d${idx + 1}`;
+            planSavedScrollIndexRef.current = idx;
+            setTimeout(() => {
+              Animated.timing(weekCardAnim2, { toValue: 0, duration: 200, useNativeDriver: false }).start();
+              setExpandedNutKey(key);
+            }, 150);
+          }
+        }}
         onSaveExit={() => { setShowDayComplete(false); setShowNutritionNudge(false); setScreen('plan'); }}
       />
     );
@@ -4561,7 +4859,7 @@ function Root() {
     return (
       <View style={[styles.container, { paddingTop: 70 }]}>
         <LogoutBtn />
-        <TouchableOpacity onPress={() => setScreen('plan')} style={[styles.backBtn, { position: 'absolute', top: 20, left: 16, zIndex: 10 }]}>
+        <TouchableOpacity onPress={() => { setScreen('plan'); setTimeout(() => planFlatListRef.current?.scrollToOffset({ offset: planSavedScrollOffsetRef.current, animated: false }), 100); }} style={[styles.backBtn, { position: 'absolute', top: 20, left: 16, zIndex: 10 }]}>
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
         <Text style={[styles.title, { marginTop: 16 }]}>Your Nutrition Plan</Text>
@@ -5120,6 +5418,7 @@ function Root() {
 
   // ── Plan Overview Screen ─────────────────────────────────
   function navigateToDay(item) {
+    planSavedScrollOffsetRef.current = planScrollOffsetRef.current;
     setSelectedDay(item);
     setActiveExerciseIndex(0);
     setRestTimerRunning(false);
@@ -5235,7 +5534,7 @@ function Root() {
           const nextDay = plan?.find(d => !d.day.includes('Rest') && !completedWorkouts[`${d.day}|${currentWeek}`]);
           const nextDayStarted = nextDay ? nextDay.exercises.some(e => (logs[logKey(nextDay.day, e)] || []).some(en => en.programWeek === currentWeek)) : false;
           return (
-            <View style={{ marginBottom: 12 }}>
+            <Animated.View style={{ marginBottom: weekCardAnim2.interpolate({ inputRange: [0, 1], outputRange: [0, 12] }), opacity: weekCardAnim2, maxHeight: weekCardAnim2.interpolate({ inputRange: [0, 1], outputRange: [0, 300] }), overflow: 'hidden' }}>
               <LinearGradient
                 colors={['#1e1040', '#0e1630', '#0a0a1a']}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -5290,7 +5589,7 @@ function Root() {
                   </TouchableOpacity>
                 </View>
               </LinearGradient>
-            </View>
+            </Animated.View>
           );
         })()}
 
@@ -5367,19 +5666,28 @@ function Root() {
           );
         })()}
 
-        <Animated.View style={{ flex: 1, transform: [{ translateX: weekSlideAnim }] }}>
+        <View
+          ref={planFlatListContainerRef}
+          style={{ flex: 1 }}
+          onLayout={() => {
+            planFlatListContainerRef.current?.measure?.((x, y, w, h, px, py) => {
+              planFlatListTopRef.current = py;
+            });
+          }}
+        >
+        <Animated.View style={{ flex: 1, transform: [{ translateX: weekSlideAnim }] }} pointerEvents={expandedNutKey ? 'box-none' : 'auto'}>
         <FlatList
           ref={planFlatListRef}
-          data={plan}
-          keyExtractor={(_, i) => i.toString()}
+          data={expandedNutKey ? (plan || []).filter((_, i) => expandedNutKey === `w${currentWeek}_d${i + 1}`) : plan}
+          keyExtractor={(item) => item.day}
           getItemLayout={(_, index) => ({ length: 116, offset: 116 * index, index })}
           onScroll={(e) => { planScrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
           scrollEventThrottle={16}
-          onScrollToIndexFailed={({ index }) => {
-            setTimeout(() => planFlatListRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.1 }), 100);
-          }}
+          contentContainerStyle={expandedNutKey ? { paddingTop: 2 } : undefined}
+          scrollEnabled={!expandedNutKey}
+          onScrollToIndexFailed={() => {}}
           onLayout={() => {
-            if (!plan || !planFlatListRef.current) return;
+            if (!plan || !planFlatListRef.current || expandedNutKey) return;
             let activeWeek = null;
             for (let w = 1; w <= TOTAL_WEEKS; w++) {
               const hasIncomplete = plan.some(d => !d.day.includes('Rest') && !completedWorkouts[`${d.day}|${w}`]);
@@ -5391,9 +5699,11 @@ function Root() {
             }
           }}
           ListHeaderComponent={
-            <View style={{ marginBottom: 8, marginTop: 0 }}>
-              <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Weekly Schedule</Text>
-            </View>
+            !expandedNutKey ? (
+              <View style={{ marginBottom: 8, marginTop: 0 }}>
+                <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Weekly Schedule</Text>
+              </View>
+            ) : null
           }
           ListFooterComponent={<View style={{ height: 32 }} />}
           renderItem={({ item, index }) => {
@@ -5411,12 +5721,18 @@ function Root() {
               const nutritionData = (nutKey && nutritionHistory[nutKey]) || null;
               const handleSetExpandedNutKey = (newKey) => {
                 if (newKey !== null) {
-                  planSavedScrollOffsetRef.current = planScrollOffsetRef.current;
-                  setTimeout(() => planFlatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 }), 50);
+                  planSavedScrollIndexRef.current = index;
+                  Animated.timing(weekCardAnim2, { toValue: 0, duration: 200, useNativeDriver: false }).start();
+                  setExpandedNutKey(newKey);
                 } else {
-                  setTimeout(() => planFlatListRef.current?.scrollToOffset({ offset: planSavedScrollOffsetRef.current, animated: true }), 50);
+                  setExpandedNutKey(null);
+                  const savedIdx = planSavedScrollIndexRef.current ?? index;
+                  // Wait for full plan data to be restored before scrolling
+                  setTimeout(() => {
+                    planFlatListRef.current?.scrollToIndex({ index: savedIdx, animated: false, viewPosition: 0.3 });
+                    Animated.timing(weekCardAnim2, { toValue: 1, duration: 250, useNativeDriver: false }).start();
+                  }, 400);
                 }
-                setExpandedNutKey(newKey);
               };
               return (
                 <DayCard
@@ -5431,8 +5747,10 @@ function Root() {
                   expandedNutKey={expandedNutKey}
                   setExpandedNutKey={handleSetExpandedNutKey}
                   screenHeight={screenHeight}
+                  nutExpandedHeight={screenHeight - 310}
                   mealsCount={nutritionData?.meals ? nutritionData.meals.reduce((s, m) => s + m.foods.length, 0) : 0}
                   onLogMeals={() => nutKey && setMealLogModalKey(nutKey)}
+                  onViewNutritionPlan={() => setScreen('nutritionResults')}
                   onCompleteRest={() => {
                     const key = `${item.day}|${currentWeek}`;
                     const newVal = !completedWorkouts[key];
@@ -5462,12 +5780,40 @@ function Root() {
                     });
                   }}
                   onPress={() => navigateToDay(item)}
+                  customFoods={customFoods}
+                  onSaveCustomFood={(food) => {
+                    const exists = customFoods.findIndex(f => f.name.toLowerCase() === food.name.toLowerCase());
+                    const updated = exists >= 0 ? customFoods.map((f, i) => i === exists ? food : f) : [...customFoods, food];
+                    setCustomFoods(updated);
+                    if (user) updateDoc(doc(db, 'users', user.email), { customFoods: updated });
+                  }}
+                  favoriteFoods={favoriteFoods}
+                  onToggleFavorite={(name) => {
+                    const updated = favoriteFoods.includes(name) ? favoriteFoods.filter(n => n !== name) : [...favoriteFoods, name];
+                    setFavoriteFoods(updated);
+                    if (user) updateDoc(doc(db, 'users', user.email), { favoriteFoods: updated });
+                  }}
+                  nutritionHistory={nutritionHistory}
+                  onSaveMeals={(meals, dailyTotals) => {
+                    if (!nutKey) return;
+                    const updatedHistory = { ...nutritionHistory, [nutKey]: { ...nutritionHistory[nutKey], calories: dailyTotals.calories, protein: dailyTotals.protein, carbs: dailyTotals.carbs, fats: dailyTotals.fats, meals } };
+                    setNutritionHistory(updatedHistory);
+                    if (user) updateDoc(doc(db, 'users', user.email), { nutritionHistory: updatedHistory });
+                    const protGoal = nutritionResult?.proteinG || 0;
+                    const calGoal = nutritionResult?.target ?? nutritionResult?.tdee ?? 0;
+                    setDailyWins(w => {
+                      const updated = { ...w, [nutKey]: { ...(w[nutKey] || {}), protein: protGoal > 0 && dailyTotals.protein >= protGoal, calories: calGoal > 0 && dailyTotals.calories >= calGoal * 0.9 && dailyTotals.calories <= calGoal * 1.1 } };
+                      if (user) updateDoc(doc(db, 'users', user.email), { dailyWins: updated });
+                      return updated;
+                    });
+                  }}
                 />
               );
             })();
           }}
         />
         </Animated.View>
+        </View>
 
         {/* Meal Log Modal */}
         <MealLogModal

@@ -2133,23 +2133,24 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
                   )}
 
                   {mlAddMode === 'search' && (
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, minHeight: 0 }}>
                       <View style={{ marginHorizontal: 10, marginBottom: 8, backgroundColor: '#1c1c3a', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ffffff10' }}>
                         <Text style={{ color: COLORS.muted, marginRight: 6, fontSize: 12 }}>🔍</Text>
                         <TextInput value={mlSearch} onChangeText={v => { setMlSearch(v); setMlSelectedFood(null); setMlQty('1'); }} placeholder="Search foods..." placeholderTextColor={COLORS.muted} style={{ flex: 1, color: COLORS.text, fontSize: 13 }} autoFocus />
                         {mlSearch.length > 0 && <TouchableOpacity onPress={() => { setMlSearch(''); setMlSelectedFood(null); setMlQty('1'); }}><Text style={{ color: COLORS.muted, fontSize: 14, paddingLeft: 6 }}>×</Text></TouchableOpacity>}
                       </View>
-                      <FlatList
-                        data={filteredDB}
-                        keyExtractor={f => f.name}
-                        keyboardShouldPersistTaps="handled"
+                      <ScrollView
                         nestedScrollEnabled
+                        keyboardShouldPersistTaps="handled"
+                        style={{ height: nutExpandedHeight - 140 }}
                         contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
-                        renderItem={({ item: food }) => {
+                      >
+                        {filteredDB.length === 0 && <Text style={{ color: COLORS.muted, textAlign: 'center', marginTop: 20, fontSize: 12 }}>No foods match your search</Text>}
+                        {filteredDB.map(food => {
                           const isSel = mlSelectedFood?.name === food.name;
                           const q = isSel ? Math.max(parseFloat(mlQty) || 1, 0.1) : 1;
                           return (
-                            <TouchableOpacity activeOpacity={isSel ? 1 : 0.7} onPress={() => { if (!isSel) { setMlSelectedFood(food); setMlQty('1'); } }}
+                            <TouchableOpacity key={food.name} activeOpacity={isSel ? 1 : 0.7} onPress={() => { if (!isSel) { setMlSelectedFood(food); setMlQty('1'); } }}
                               style={{ backgroundColor: isSel ? '#1e3a2a' : '#1c1c3a', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6, borderWidth: 1, borderColor: isSel ? '#4ade8060' : 'transparent' }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <TouchableOpacity onPress={() => onToggleFavorite?.(food.name)} style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}>
@@ -2184,9 +2185,8 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
                               </View>
                             </TouchableOpacity>
                           );
-                        }}
-                        ListEmptyComponent={<Text style={{ color: COLORS.muted, textAlign: 'center', marginTop: 20, fontSize: 12 }}>No foods match your search</Text>}
-                      />
+                        })}
+                      </ScrollView>
                     </View>
                   )}
 

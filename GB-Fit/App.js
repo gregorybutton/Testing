@@ -1892,7 +1892,7 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
 
 
   return (
-    <Animated.View style={{ transform: [{ scale }], marginBottom: 10 }}>
+    <Animated.View style={{ transform: [{ scale }], marginBottom: 5 }}>
       <Animated.View style={{ transform: [{ scale: nextPulse }] }}>
 
         {/* Nutrition card — in normal flow so it sets the wrapper height */}
@@ -1901,7 +1901,7 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
             backgroundColor: nutBg,
             borderRadius: 14,
             marginHorizontal: 8,
-            paddingTop: 57,
+            paddingTop: 46,
             shadowColor: '#4ade80',
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.18,
@@ -1919,7 +1919,7 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
             const nutWinCount = (workoutDone ? 1 : 0) + (calHit ? 1 : 0) + (protHit ? 1 : 0);
             const totalNutWins = 3;
             return (
-              <View ref={nutHeaderRef} style={{ paddingHorizontal: 16, paddingBottom: nutExpanded ? 10 : 5, paddingTop: nutExpanded ? 10 : 4 }}>
+              <View ref={nutHeaderRef} style={{ paddingHorizontal: 16, paddingBottom: nutExpanded ? 10 : 3, paddingTop: nutExpanded ? 10 : 2 }}>
                 <TouchableOpacity onPress={toggleNut} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   {/* Arrow */}
                   <Text style={{ color: '#4ade8066', fontSize: nutExpanded ? 13 : 10, fontWeight: '700', width: nutExpanded ? 14 : 10 }}>{nutExpanded ? '▲' : '▼'}</Text>
@@ -2238,19 +2238,19 @@ function DayCard({ item, currentWeek, logs, completedWorkouts, isNext, onPress, 
         >
           {/* Left accent bar */}
           {!isRestDay && (
-            <View style={{ width: 3, backgroundColor: isCompleted ? '#3a3a5a' : accentColor, borderRadius: 2, marginVertical: 14, marginLeft: 12, opacity: isCompleted ? 0.5 : isToday && !isCompleted ? 1 : 0.7 }} />
+            <View style={{ width: 3, backgroundColor: isCompleted ? '#3a3a5a' : accentColor, borderRadius: 2, marginVertical: 9, marginLeft: 12, opacity: isCompleted ? 0.5 : isToday && !isCompleted ? 1 : 0.7 }} />
           )}
-          <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 9, paddingBottom: 10 }}>
+          <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 5, paddingBottom: 5 }}>
             {/* Top row: name + badge */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
-                  <Text style={{ color: isRestDay ? '#8a8aaa' : '#ffffffcc', fontWeight: '700', fontSize: 16 }}>{dayName}</Text>
+                  <Text style={{ color: isRestDay ? '#8a8aaa' : '#ffffffcc', fontWeight: '700', fontSize: 14 }}>{dayName}</Text>
                   {workoutLabel ? (
-                    <Text style={{ color: isRestDay ? '#6a6a8a' : '#ffffff77', fontSize: 13 }}>– {workoutLabel}</Text>
+                    <Text style={{ color: isRestDay ? '#6a6a8a' : '#ffffff77', fontSize: 12 }}>– {workoutLabel}</Text>
                   ) : null}
                 </View>
-                <Text style={{ color: isRestDay ? '#4a4a6a' : '#ffffff44', fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: isRestDay ? '#4a4a6a' : '#ffffff44', fontSize: 11, marginTop: 1 }}>
                   {isRestDay ? 'Rest & Recovery' : `${workoutExs.length} exercises`}
                 </Text>
               </View>
@@ -5714,7 +5714,7 @@ function Root() {
           ref={planFlatListRef}
           data={expandedNutKey ? (plan || []).filter((_, i) => expandedNutKey === `w${currentWeek}_d${i + 1}`) : plan}
           keyExtractor={(item) => item.day}
-          getItemLayout={(_, index) => ({ length: 116, offset: 116 * index, index })}
+          getItemLayout={(_, index) => ({ length: 82, offset: 82 * index, index })}
           onScroll={(e) => { planScrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
           scrollEventThrottle={16}
           contentContainerStyle={expandedNutKey ? { paddingTop: 2 } : undefined}
@@ -5767,7 +5767,7 @@ function Root() {
                   }, 600);
                   setTimeout(() => {
                     Animated.timing(weekCardAnim2, { toValue: 1, duration: 250, useNativeDriver: false }).start();
-                  }, 700);
+                  }, 350);
                 }
               };
               return (
